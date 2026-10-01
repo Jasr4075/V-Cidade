@@ -1,13 +1,15 @@
 {
   "expo": {
-    "name": "cidade",
+    "name": "Mapa da Cidade",
     "slug": "cidade",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "cidade",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cidade.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -16,10 +18,22 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "package": "com.cidade.app",
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-image-picker",
+      "expo-location"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "cidade-mvp"
+      }
     }
   }
 }
