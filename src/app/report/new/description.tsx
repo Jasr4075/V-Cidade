@@ -113,7 +113,7 @@ export default function NewReportDescriptionScreen() {
         <View style={styles.photoPreview}>
           {photoUris.slice(0, 3).map((uri: string, index: number) => (
             <View key={index} style={styles.photoThumb}>
-              // Photo thumbnail
+              {/* Photo thumbnail */}
             </View>
           ))}
         </View>

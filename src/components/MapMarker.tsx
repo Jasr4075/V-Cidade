@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { ReportStatus } from '@/types';
 import { getStatusColor } from '@/utils';
 
@@ -13,11 +13,8 @@ export const MapMarker = React.memo(({ status, count, onPress }: MapMarkerProps)
   const color = getStatusColor(status);
   const size = count && count > 1 ? 40 : 32;
 
-  return (
-    <View
-      style={[styles.markerContainer, { width: size, height: size }]}
-      onPress={onPress}
-    >
+  const content = (
+    <View style={[styles.markerContainer, { width: size, height: size }]}>
       <View
         style={[
           styles.marker,
@@ -31,6 +28,12 @@ export const MapMarker = React.memo(({ status, count, onPress }: MapMarkerProps)
       )}
     </View>
   );
+
+  if (onPress) {
+    return <TouchableOpacity onPress={onPress} activeOpacity={0.8}>{content}</TouchableOpacity>;
+  }
+
+  return content;
 });
 
 MapMarker.displayName = 'MapMarker';

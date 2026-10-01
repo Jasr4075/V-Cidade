@@ -13,7 +13,20 @@ interface ButtonProps {
   textStyle?: TextStyle;
 }
 
-export const Button = React.forwardRef<TouchableOpacity, ButtonProps>(
+const variantStyles: Record<string, ViewStyle & { textColor: string }> = {
+  primary: { backgroundColor: '#1976D2', textColor: '#fff' },
+  secondary: { backgroundColor: '#E3F2FD', textColor: '#1976D2' },
+  outline: { backgroundColor: 'transparent', borderWidth: 2, borderColor: '#1976D2', textColor: '#1976D2' },
+  danger: { backgroundColor: '#E53935', textColor: '#fff' },
+};
+
+const sizeStyles: Record<string, ViewStyle & { fontSize: number }> = {
+  small: { paddingVertical: 8, paddingHorizontal: 16, fontSize: 14 },
+  medium: { paddingVertical: 14, paddingHorizontal: 24, fontSize: 16 },
+  large: { paddingVertical: 18, paddingHorizontal: 32, fontSize: 18 },
+};
+
+export const Button = React.forwardRef<any, ButtonProps>(
   (
     {
       title,
@@ -28,18 +41,17 @@ export const Button = React.forwardRef<TouchableOpacity, ButtonProps>(
     },
     ref
   ) => {
-    const baseStyles = styles.base;
-    const variantStyles = styles[variant];
-    const sizeStyles = styles[size];
+    const vStyles = variantStyles[variant];
+    const sStyles = sizeStyles[size];
     const widthStyle = fullWidth ? styles.fullWidth : {};
 
     return (
       <TouchableOpacity
         ref={ref}
         style={[
-          baseStyles,
-          variantStyles,
-          sizeStyles,
+          styles.base,
+          vStyles,
+          sStyles,
           widthStyle,
           style,
           (disabled || loading) && styles.disabled,
@@ -51,7 +63,7 @@ export const Button = React.forwardRef<TouchableOpacity, ButtonProps>(
         {loading ? (
           <ActivityIndicator color={variant === 'primary' ? '#fff' : '#1976D2'} size="small" />
         ) : (
-          <Text style={[styles.text, variantStyles.text, sizeStyles.text, textStyle]}>{title}</Text>
+          <Text style={[styles.text, { color: (vStyles as any).textColor }, { fontSize: (sStyles as any).fontSize }, textStyle]}>{title}</Text>
         )}
       </TouchableOpacity>
     );
@@ -67,32 +79,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
   },
-  primary: {
-    backgroundColor: '#1976D2',
-  },
-  secondary: {
-    backgroundColor: '#E3F2FD',
-  },
-  outline: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#1976D2',
-  },
-  danger: {
-    backgroundColor: '#E53935',
-  },
-  small: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  medium: {
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-  },
-  large: {
-    paddingVertical: 18,
-    paddingHorizontal: 32,
-  },
   fullWidth: {
     width: '100%',
   },
@@ -102,26 +88,5 @@ const styles = StyleSheet.create({
   text: {
     fontWeight: '600',
     fontSize: 16,
-  },
-  primaryText: {
-    color: '#fff',
-  },
-  secondaryText: {
-    color: '#1976D2',
-  },
-  outlineText: {
-    color: '#1976D2',
-  },
-  dangerText: {
-    color: '#fff',
-  },
-  smallText: {
-    fontSize: 14,
-  },
-  mediumText: {
-    fontSize: 16,
-  },
-  largeText: {
-    fontSize: 18,
   },
 });

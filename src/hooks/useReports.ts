@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getAnonymousId } from '@/utils';
-import { Report, Category } from '@/types';
+import { Report, Category, ReportUpdate, ReportRelation, Photo } from '@/types';
 import {
   getCategories,
   getNearbyReports,
@@ -18,6 +18,7 @@ import {
   hasUserConfirmedResolution,
   isReportResolved,
   searchReports,
+  getResolutionConfirmationsCount,
 } from '@/services/reports/reports';
 
 export function useAnonymousId() {
@@ -72,24 +73,29 @@ export function useNearbyReports(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const radius = options?.radius;
+  const categoryId = options?.categoryId;
+  const status = options?.status;
+  const enabled = options?.enabled;
+
   const loadReports = useCallback(async () => {
-    if (!options?.enabled) return;
+    if (!enabled) return;
     try {
       setLoading(true);
       const data = await getNearbyReports({
         latitude,
         longitude,
-        radius: options.radius,
-        category_id: options.categoryId,
-        status: options.status,
+        radius,
+        category_id: categoryId,
+        status,
       });
       setReports(data);
-    } catch (err) {
+    } catch {
       setError('Erro ao carregar problemas próximos');
     } finally {
       setLoading(false);
     }
-  }, [latitude, longitude, options?.radius, options?.categoryId, options?.status, options?.enabled]);
+  }, [latitude, longitude, radius, categoryId, status, enabled]);
 
   useEffect(() => {
     loadReports();
@@ -119,7 +125,7 @@ export function useReport(reportId: string, anonymousId: string) {
     if (reportId) {
       loadReport();
     }
-  }, [loadReport]);
+  }, [loadReport, reportId]);
 
   return { report, loading, error, refresh: loadReport };
 }
@@ -221,7 +227,7 @@ export function useSupportReport(reportId: string, anonymousId: string) {
 }
 
 export function useReportUpdates(reportId: string) {
-  const [updates, setUpdates] = useState<Array<{ id: string; status: string; description: string; anonymous_id: string; created_at: string; photos: Array<{ storage_path: string }> }>>([]);
+  const [updates, setUpdates] = useState<Array<ReportUpdate & { photos?: Photo[] }>>([]);
   const [loading, setLoading] = useState(false);
 
   const loadUpdates = useCallback(async () => {
@@ -240,7 +246,7 @@ export function useReportUpdates(reportId: string) {
     if (reportId) {
       loadUpdates();
     }
-  }, [loadUpdates]);
+  }, [loadUpdates, reportId]);
 
   const addUpdate = async (
     status: 'SAME' | 'WORSE' | 'BETTER' | 'RESOLVED',
@@ -262,7 +268,7 @@ export function useReportUpdates(reportId: string) {
 }
 
 export function useReportRelations(reportId: string) {
-  const [relations, setRelations] = useState<Array<{ id: string; relation_type: string; related_report: Report }>>([]);
+  const [relations, setRelations] = useState<Array<ReportRelation & { related_report?: Report }>>([]);
   const [loading, setLoading] = useState(false);
 
   const loadRelations = useCallback(async () => {
@@ -281,7 +287,7 @@ export function useReportRelations(reportId: string) {
     if (reportId) {
       loadRelations();
     }
-  }, [loadRelations]);
+  }, [loadRelations, reportId]);
 
   const addRelation = async (
     relatedReportId: string,
@@ -309,7 +315,7 @@ export function useResolutionConfirmation(reportId: string, anonymousId: string)
   const loadStatus = useCallback(async () => {
     try {
       const hasConfirmed = await hasUserConfirmedResolution(reportId, anonymousId);
-      const confirmationsCount = await (await import('@/services/reports/reports')).getResolutionConfirmationsCount(reportId);
+      const confirmationsCount = await getResolutionConfirmationsCount(reportId);
       const isResolved = await isReportResolved(reportId);
       setConfirmed(hasConfirmed);
       setCount(confirmationsCount);
@@ -323,7 +329,7 @@ export function useResolutionConfirmation(reportId: string, anonymousId: string)
     if (reportId) {
       loadStatus();
     }
-  }, [loadStatus]);
+  }, [loadStatus, reportId]);
 
   const confirm = async (): Promise<boolean> => {
     try {

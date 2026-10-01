@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView } from 'react-native';
-import { Photo } from '@/types';
 
 interface PhotoPreviewProps {
   photos: Array<{ uri: string; local?: boolean }>;
@@ -11,13 +10,15 @@ interface PhotoPreviewProps {
 export const PhotoPreview = ({ photos, onRemove, maxHeight = 120 }: PhotoPreviewProps) => {
   if (photos.length === 0) return null;
 
+  const photoWidth = maxHeight * 1.33;
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.container}>
       {photos.map((photo, index) => (
         <View key={index} style={styles.photoWrapper}>
           <Image
             source={{ uri: photo.uri }}
-            style={styles.photo}
+            style={[styles.photo, { width: photoWidth, height: maxHeight }]}
             resizeMode="cover"
           />
           {onRemove && (
@@ -43,8 +44,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   photo: {
-    width: maxHeight * 1.33,
-    height: maxHeight,
     borderRadius: 12,
   },
   removeButton: {

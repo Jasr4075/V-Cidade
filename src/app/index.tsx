@@ -29,7 +29,7 @@ export default function HomeScreen() {
     userLocation?.longitude || DEFAULT_MAP_REGION.longitude,
     {
       radius: 5000,
-      category_id: selectedCategoryId,
+      categoryId: selectedCategoryId || undefined,
       enabled: !!userLocation,
     }
   );
@@ -121,7 +121,7 @@ export default function HomeScreen() {
                 region={mapRegion}
                 onRegionChange={handleMapRegionChange}
                 onPressMarker={handleReportPress}
-                categoryFilter={selectedCategoryId}
+                categoryFilter={selectedCategoryId || undefined}
                 userLocation={userLocation}
                 style={styles.map}
               />

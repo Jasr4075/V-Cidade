@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadPhoto, getPhotoUrl, Photo } from '@/services/storage/storage';
+import { uploadPhoto, getPhotoUrl } from '@/services/storage/storage';
+import { Photo } from '@/types';
 import { MAX_PHOTOS_PER_REPORT } from '@/constants';
 
 export function usePhotoPicker() {
@@ -104,15 +105,20 @@ export function usePhotoUrls(photoPaths: string[]) {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  useCallback(async () => {
+  useEffect(() => {
     if (photoPaths.length === 0) return;
-    setLoading(true);
-    const urlMap: Record<string, string> = {};
-    for (const path of photoPaths) {
-      urlMap[path] = await getPhotoUrl(path);
-    }
-    setUrls(urlMap);
-    setLoading(false);
+    
+    const fetchUrls = async () => {
+      setLoading(true);
+      const urlMap: Record<string, string> = {};
+      for (const path of photoPaths) {
+        urlMap[path] = await getPhotoUrl(path);
+      }
+      setUrls(urlMap);
+      setLoading(false);
+    };
+    
+    fetchUrls();
   }, [photoPaths]);
 
   return { urls, loading };

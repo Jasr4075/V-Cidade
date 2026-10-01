@@ -7,7 +7,7 @@ import { useReportRelations } from '@/hooks/useReports';
 import { useResolutionConfirmation } from '@/hooks/useReports';
 import { useAnonymousId } from '@/hooks/useReports';
 import { useSupportReport } from '@/hooks/useReports';
-import { ReportStatus } from '@/components/ReportStatus';
+import { ReportStatusBadge } from '@/components/ReportStatus';
 import { Timeline } from '@/components/Timeline';
 import { SupportButton } from '@/components/SupportButton';
 import { Button } from '@/components/Button';
@@ -97,7 +97,7 @@ export default function ReportDetailScreen() {
           <Text style={styles.categoryIcon}>{report.category?.icon || '📍'}</Text>
           <Text style={styles.categoryName}>{report.category?.label || report.category_id}</Text>
         </View>
-        <ReportStatus status={report.status} size="large" confirmationsCount={count} />
+        <ReportStatusBadge status={report.status} size="large" confirmationsCount={count} />
       </View>
 
       <Text style={styles.title}>{report.title}</Text>
@@ -162,7 +162,7 @@ export default function ReportDetailScreen() {
           title="Denunciar conteúdo"
           onPress={handleInappropriate}
           variant="outline"
-          style={[styles.actionButton, styles.dangerButton]}
+          style={{ ...styles.actionButton, ...styles.dangerButton }}
         />
       </View>
 

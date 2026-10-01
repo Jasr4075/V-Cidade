@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import MapView, { Marker, Callout, Region } from 'react-native-maps';
 import { Report } from '@/types';
 import { MapMarker } from './MapMarker';

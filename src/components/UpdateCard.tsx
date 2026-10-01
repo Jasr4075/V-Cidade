@@ -38,7 +38,7 @@ export const UpdateCard = ({ update, index, total }: UpdateCardProps) => {
           <View style={styles.photos}>
             {update.photos.slice(0, 3).map((photo, photoIndex) => (
               <View key={photoIndex} style={styles.photoWrapper}>
-                // Photo would be rendered here with Image component
+                {/* Photo would be rendered here with Image component */}
               </View>
             ))}
           </View>

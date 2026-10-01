@@ -10,9 +10,11 @@ interface SupportButtonProps {
 }
 
 export const SupportButton = ({ supported, count, loading, onPress, disabled }: SupportButtonProps) => {
-  const scaleAnim = React.useRef(new Animated.Value(supported ? 1.1 : 1)).current;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
   React.useEffect(() => {
+    scaleAnim.setValue(supported ? 1.1 : 1);
     Animated.spring(scaleAnim, {
       toValue: supported ? 1.1 : 1,
       useNativeDriver: true,

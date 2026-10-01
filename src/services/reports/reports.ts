@@ -6,7 +6,6 @@ import {
   Photo,
   Support,
   ReportRelation,
-  ResolutionConfirmation,
   DuplicateCheckResult,
   NearbyReportsParams,
 } from '@/types';
@@ -39,7 +38,7 @@ export async function getCategories(): Promise<Category[]> {
     .order('name');
 
   if (error) throw error;
-  return data || [];
+  return (data || []) as Category[];
 }
 
 export async function getCategoryBySlug(slug: string): Promise<Category | null> {
@@ -51,7 +50,7 @@ export async function getCategoryBySlug(slug: string): Promise<Category | null> 
     .single();
 
   if (error) return null;
-  return data;
+  return data as Category | null;
 }
 
 export async function getNearbyReports(params: NearbyReportsParams): Promise<Report[]> {
@@ -76,7 +75,7 @@ export async function getNearbyReports(params: NearbyReportsParams): Promise<Rep
   });
 
   if (error) throw error;
-  return (data || []).map(mapReportFromDb);
+  return ((data || []) as unknown[]).map(mapReportFromDb);
 }
 
 export async function getReportById(reportId: string, anonymousId: string): Promise<Report | null> {
@@ -86,8 +85,8 @@ export async function getReportById(reportId: string, anonymousId: string): Prom
   });
 
   if (error) throw error;
-  if (!data || data.length === 0) return null;
-  return mapReportFromDb(data[0]);
+  if (!data || (data as unknown[]).length === 0) return null;
+  return mapReportFromDb((data as unknown[])[0]);
 }
 
 export async function createReport(
@@ -129,7 +128,7 @@ export async function checkDuplicates(
   });
 
   if (error) throw error;
-  return (data || []).map((r) => ({
+  return ((data || []) as unknown[]).map((r) => ({
     report: mapReportFromDb(r),
     distance: (r as Record<string, unknown>).distance as number,
   }));
@@ -297,5 +296,5 @@ export async function searchReports(query: string): Promise<Report[]> {
     .limit(20);
 
   if (error) throw error;
-  return (data || []).map(mapReportFromDb);
+  return ((data || []) as unknown[]).map(mapReportFromDb);
 }

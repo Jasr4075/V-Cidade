@@ -18,8 +18,6 @@ export async function getCurrentLocation(): Promise<Coordinates | null> {
   try {
     const location = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
-      maximumAge: 10000,
-      timeout: 15000,
     });
 
     return {

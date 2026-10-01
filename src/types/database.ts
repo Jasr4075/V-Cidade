@@ -1,5 +1,3 @@
-import { PostgisGeometry } from '@supabase/supabase-js';
-
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
 export interface Database {
@@ -41,7 +39,7 @@ export interface Database {
           title: string;
           description: string;
           status: 'ACTIVE' | 'IMPROVING' | 'RESOLVED' | 'ARCHIVED';
-          location: PostgisGeometry<'POINT'>;
+          location: string;
           anonymous_id: string;
           created_at: string;
           updated_at: string;
@@ -52,7 +50,7 @@ export interface Database {
           title: string;
           description: string;
           status?: 'ACTIVE' | 'IMPROVING' | 'RESOLVED' | 'ARCHIVED';
-          location: PostgisGeometry<'POINT'>;
+          location: string;
           anonymous_id: string;
           created_at?: string;
           updated_at?: string;
@@ -63,7 +61,7 @@ export interface Database {
           title?: string;
           description?: string;
           status?: 'ACTIVE' | 'IMPROVING' | 'RESOLVED' | 'ARCHIVED';
-          location?: PostgisGeometry<'POINT'>;
+          location?: string;
           anonymous_id?: string;
           created_at?: string;
           updated_at?: string;
@@ -76,7 +74,7 @@ export interface Database {
           status: 'SAME' | 'WORSE' | 'BETTER' | 'RESOLVED';
           description: string;
           anonymous_id: string;
-          location: PostgisGeometry<'POINT'> | null;
+          location: string | null;
           created_at: string;
         };
         Insert: {
@@ -85,7 +83,7 @@ export interface Database {
           status: 'SAME' | 'WORSE' | 'BETTER' | 'RESOLVED';
           description: string;
           anonymous_id: string;
-          location?: PostgisGeometry<'POINT'> | null;
+          location?: string | null;
           created_at?: string;
         };
         Update: {
@@ -94,7 +92,7 @@ export interface Database {
           status?: 'SAME' | 'WORSE' | 'BETTER' | 'RESOLVED';
           description?: string;
           anonymous_id?: string;
-          location?: PostgisGeometry<'POINT'> | null;
+          location?: string | null;
           created_at?: string;
         };
       };
@@ -202,7 +200,7 @@ export interface Database {
           title: string;
           description: string;
           status: 'ACTIVE' | 'IMPROVING' | 'RESOLVED' | 'ARCHIVED';
-          location: PostgisGeometry<'POINT'>;
+          location: string;
           anonymous_id: string;
           created_at: string;
           updated_at: string;

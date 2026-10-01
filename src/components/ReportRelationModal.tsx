@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableWithoutFeedback, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableWithoutFeedback, TextInput, ScrollView, TouchableOpacity } from 'react-native';
 import { Button } from './Button';
 import { Report, RelationType } from '@/types';
 import { RELATION_TYPE_LABELS } from '@/constants';
@@ -101,7 +101,7 @@ export const ReportRelationModal = ({
             {loading ? 'Buscando...' : results.length > 0 ? `${results.length} resultado(s)` : 'Nenhum resultado'}
           </Text>
 
-          <ScrollView style={styles.resultsList} maxHeight={300}>
+          <ScrollView style={[styles.resultsList, { maxHeight: 300 }]}>
             {results.map((report) => (
               <TouchableOpacity
                 key={report.id}

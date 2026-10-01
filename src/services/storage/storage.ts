@@ -87,7 +87,7 @@ export async function deletePhoto(photoId: string): Promise<void> {
 
   const { error: storageError } = await supabase.storage
     .from(BUCKET_NAME)
-    .remove([photo.storage_path]);
+    .remove([(photo as { storage_path: string }).storage_path]);
 
   if (storageError) throw storageError;
 

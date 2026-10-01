@@ -1,16 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { ReportStatus } from '@/types';
-import { getStatusColor, STATUS_LABELS } from '@/utils';
+import { ReportStatus as ReportStatusType } from '@/types';
+import { getStatusColor } from '@/utils';
+import { STATUS_LABELS } from '@/constants';
 
-interface ReportStatusProps {
-  status: ReportStatus;
+interface ReportStatusBadgeProps {
+  status: ReportStatusType;
   size?: 'small' | 'medium' | 'large';
   showLabel?: boolean;
   confirmationsCount?: number;
 }
 
-export const ReportStatus = ({ status, size = 'medium', showLabel = true, confirmationsCount }: ReportStatusProps) => {
+export const ReportStatusBadge = ({ status, size = 'medium', showLabel = true, confirmationsCount }: ReportStatusBadgeProps) => {
   const color = getStatusColor(status);
   const label = STATUS_LABELS[status] || status;
 
@@ -36,7 +37,7 @@ export const ReportStatus = ({ status, size = 'medium', showLabel = true, confir
   );
 };
 
-ReportStatus.displayName = 'ReportStatus';
+ReportStatusBadge.displayName = 'ReportStatusBadge';
 
 const styles = StyleSheet.create({
   container: {

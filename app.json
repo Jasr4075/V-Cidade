@@ -28,7 +28,8 @@
       "expo-router",
       "expo-status-bar",
       "expo-image-picker",
-      "expo-location"
+      "expo-location",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
