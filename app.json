@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Mapa da Cidade",
-    "slug": "cidade",
+    "slug": "vcidade",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -33,7 +33,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "cidade-mvp"
+        "projectId": "f8118960-d12c-45a0-86bb-8fa92ae11826"
       }
     }
   }
