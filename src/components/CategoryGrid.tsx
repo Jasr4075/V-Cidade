@@ -1,14 +1,21 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { Category } from '@/types';
-import { MaterialCommunityIcons, getCategoryIcon, colors, radii, spacing, fontSize, fontWeight, lineHeight } from '@/theme';
+import { useResponsive } from '@/hooks/useResponsive';
+import { GRID_ITEM_MIN_WIDTH, columnWidthPercent , MaterialCommunityIcons, getCategoryIcon, colors, radii, spacing, fontSize, fontWeight, lineHeight } from '@/theme';
+
 interface CategoryGridProps {
   categories: Category[];
   onPressCategory: (category: Category) => void;
   /** Realce a categoria que está filtrando a lista. */
   selectedCategoryId?: string | null;
-  /** Modo wrap em grid, para telas com espaço para colunas. */
-  layout?: 'horizontal' | 'grid';
+  /**
+   * `'auto'` (padrão) decide pelo espaço disponível: rolagem horizontal no
+   * celular — que economiza altura e é o padrão esperado em telas estreitas —
+   * e grid de verdade a partir de tablet. Passe `'grid'` ou `'horizontal'`
+   * para forçar.
+   */
+  layout?: 'auto' | 'horizontal' | 'grid';
 }
 
 /**
@@ -16,21 +23,55 @@ interface CategoryGridProps {
  * Rótulo textual sempre visível — o ícone nunca é o único sinal.
  */
 export const CategoryGrid = React.memo(
-  ({ categories, onPressCategory, selectedCategoryId, layout = 'horizontal' }: CategoryGridProps) => {
-    const active = categories.filter((c) => c.active);
+  ({ categories, onPressCategory, selectedCategoryId, layout = 'auto' }: CategoryGridProps) => {
+    const responsive = useResponsive();
+    const active = useMemo(() => categories.filter((c) => c.active), [categories]);
 
-    if (layout === 'grid') {
+    // O pai já aplica a margem lateral da página; aqui calculamos apenas a
+    // largura que sobra dentro da coluna de conteúdo.
+    const innerWidth = Math.max(
+      GRID_ITEM_MIN_WIDTH.categoryTile,
+      Math.min(responsive.width - responsive.gutter * 2, responsive.maxContentWidth)
+    );
+
+    const columns = useMemo(() => {
+      const bySpace = responsive.columnsFor(
+        innerWidth,
+        GRID_ITEM_MIN_WIDTH.categoryTile,
+        spacing.sm
+      );
+      return Math.min(bySpace, responsive.categoryColumns);
+    }, [innerWidth, responsive]);
+
+    const mode = layout === 'auto' ? (responsive.isLarge ? 'grid' : 'horizontal') : layout;
+
+    const renderTile = (category: Category, style?: object) => (
+      <CategoryTile
+        key={category.id}
+        category={category}
+        selected={category.id === selectedCategoryId}
+        onPress={() => onPressCategory(category)}
+        style={style}
+      />
+    );
+
+    if (mode === 'grid') {
+      const widthPercent = columnWidthPercent(columns);
+
       return (
-        <View style={styles.grid}>
-          {active.map((category) => (
-            <CategoryTile
-              key={category.id}
-              category={category}
-              selected={category.id === selectedCategoryId}
-              onPress={() => onPressCategory(category)}
-              style={styles.gridItem}
-            />
-          ))}
+        <View
+          style={styles.grid}
+          accessibilityRole="list"
+          // Uma linha por vez de categories em Tela Leitor, como um conjunto.
+          accessibilityLabel={`Categorias, ${columns} por linha`}
+        >
+          {active.map((category) =>
+            renderTile(category, {
+              width: widthPercent,
+              // O vão é padding do próprio item: o Yoga não entende `calc()`.
+              paddingRight: spacing.sm,
+            })
+          )}
         </View>
       );
     }
@@ -42,14 +83,7 @@ export const CategoryGrid = React.memo(
         contentContainerStyle={styles.row}
         accessibilityRole="list"
       >
-        {active.map((category) => (
-          <CategoryTile
-            key={category.id}
-            category={category}
-            selected={category.id === selectedCategoryId}
-            onPress={() => onPressCategory(category)}
-          />
-        ))}
+        {active.map((category) => renderTile(category))}
       </ScrollView>
     );
   }
@@ -109,24 +143,22 @@ const CategoryTile = React.memo(function CategoryTile({
 
 const styles = StyleSheet.create({
   row: {
-    paddingHorizontal: spacing.base,
     gap: spacing.sm,
     paddingVertical: spacing.xxs,
+    // `paddingRight` para o último tile não encostar na borda da tela quando o
+    // usuário rola até o fim.
+    paddingRight: spacing.base,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: spacing.base,
-    gap: spacing.sm,
-  },
-  gridItem: {
-    // 4 colunas em telas médias, 3 em pequenas — via porcentagem.
-    flexGrow: 1,
-    flexBasis: '22%',
-    maxWidth: '48%',
+    rowGap: spacing.sm,
   },
   tile: {
+    // Largura só no modo de rolagem horizontal (alvo de toque previsível).
+    // No grid a largura vem do item pai, proporcional à contagem de colunas.
     width: 92,
+    minHeight: 96,
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.md,

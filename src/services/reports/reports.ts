@@ -91,6 +91,23 @@ function normalizeLocation(value: unknown): GeoPoint | null {
 
 function mapReportFromDb(dbReport: unknown): Report {
   const r = dbReport as Record<string, unknown>;
+
+  // `get_report_with_details` returns flattened fields (category_name/icon/slug),
+  // while direct table selects embed a `category:categories(*)` object.
+  // Build the category from the flattened RPC columns when no nested object is present.
+  const flattenedCategory: Category | undefined =
+    r.category_name != null
+      ? {
+          id: r.category_id as string,
+          name: r.category_name as string,
+          slug: (r.category_slug as string) ?? '',
+          icon: (r.category_icon as string) ?? '',
+          label: r.category_name as string,
+          active: true,
+          created_at: '',
+        }
+      : undefined;
+
   return {
     id: r.id as string,
     category_id: r.category_id as string,
@@ -101,7 +118,7 @@ function mapReportFromDb(dbReport: unknown): Report {
     anonymous_id: r.anonymous_id as string,
     created_at: r.created_at as string,
     updated_at: r.updated_at as string,
-    category: r.category as Category | undefined,
+    category: (r.category as Category | undefined) ?? flattenedCategory,
     supports_count: r.supports_count as number | undefined,
     user_has_supported: r.user_has_supported as boolean | undefined,
     resolution_confirmations_count: r.resolution_confirmations_count as number | undefined,

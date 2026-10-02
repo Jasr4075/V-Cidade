@@ -13,7 +13,6 @@ import {
   fontWeight,
   lineHeight,
   shadow,
-  layout,
   HIT_SIZE,
 } from '@/theme';
 import { StatusPill } from './StatusPill';
@@ -165,9 +164,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
     ...shadow.sm,
+    // Sem `maxWidth`/`alignSelf` aqui: quem limita a largura da coluna é a
+    // tela. Um teto fixo no card quebraria o grid de 2–3 colunas do desktop,
+    // deixando os cards centralizados em caixas de largura incerta.
     width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
   },
   main: {
     padding: spacing.base,

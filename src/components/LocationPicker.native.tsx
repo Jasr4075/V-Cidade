@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Platform, View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useResponsive } from '@/hooks/useResponsive';
 import { Coordinates, getCurrentLocation, reverseGeocode } from '@/services/location/location';
 import { useMapReady } from '@/hooks/useMapReady';
-import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, shadow, layout } from '@/theme';
+import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, shadow, HIT_SIZE } from '@/theme';
 
 const MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 interface LocationPickerProps {
@@ -40,7 +41,19 @@ export const LocationPicker = ({
   onContinue,
 }: LocationPickerProps) => {
   const mapRef = useRef<MapView>(null);
-  const insets = useSafeAreaInsets();
+
+  const responsive = useResponsive();
+  const pad = responsive.gutter;
+
+  // Cabeçalho, endereço, mapa e rodapé dividem a MESMA caixa de conteúdo.
+  // Antes o rodapé era limitado a 720px e o resto não, então num monitor o
+  // mapa esticava de ponta a ponta enquanto os botões ficavam no centro.
+  const pageStyle = {
+    width: '100%' as const,
+    maxWidth: responsive.maxContentWidth + pad * 2,
+    alignSelf: 'center' as const,
+  };
+
   const [region, setRegion] = useState({
     latitude: initialLocation?.latitude ?? -23.5505,
     longitude: initialLocation?.longitude ?? -46.6333,
@@ -108,7 +121,13 @@ export const LocationPicker = ({
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+      <View
+        style={[
+          styles.header,
+          pageStyle,
+          { paddingTop: responsive.topInset + spacing.sm, paddingHorizontal: pad },
+        ]}
+      >
         {onBack ? (
           <Pressable
             onPress={onBack}
@@ -144,9 +163,9 @@ export const LocationPicker = ({
         </View>
       </View>
 
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      <Text style={[styles.subtitle, pageStyle, { paddingHorizontal: pad }]}>{subtitle}</Text>
 
-      <View style={styles.addressBar}>
+      <View style={[styles.addressBar, pageStyle, { marginHorizontal: pad }]}>
         <MaterialCommunityIcons
           name={selected ? 'check-circle' : ICONS.map}
           size={20}
@@ -163,7 +182,7 @@ export const LocationPicker = ({
         </View>
       </View>
 
-      <View style={styles.mapWrap}>
+      <View style={[styles.mapWrap, pageStyle, { marginHorizontal: pad }]}>
         <MapView
           ref={mapRef}
           style={styles.map}
@@ -206,7 +225,13 @@ export const LocationPicker = ({
         ) : null}
       </View>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.base }]}>
+      <View
+        style={[
+          styles.footer,
+          pageStyle,
+          { paddingHorizontal: pad, paddingBottom: responsive.bottomInset + spacing.base },
+        ]}
+      >
         <Pressable
           onPress={handleUseCurrentLocation}
           disabled={locating}
@@ -264,12 +289,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    paddingHorizontal: spacing.base,
     paddingTop: spacing.lg,
   },
   iconButton: {
-    width: 48,
-    height: 48,
+    width: HIT_SIZE,
+    height: HIT_SIZE,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -316,7 +340,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.small,
     color: colors.textMuted,
     lineHeight: fontSize.small * lineHeight.snug,
-    paddingHorizontal: spacing.base,
     marginTop: spacing.sm,
     marginBottom: spacing.md,
   },
@@ -325,7 +348,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.base,
     marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
@@ -351,7 +373,6 @@ const styles = StyleSheet.create({
 
   mapWrap: {
     flex: 1,
-    marginHorizontal: spacing.base,
     borderRadius: radii.lg,
     overflow: 'hidden',
     borderWidth: 1,
@@ -420,9 +441,6 @@ const styles = StyleSheet.create({
 
   footer: {
     width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.base,
     paddingTop: spacing.base,
     gap: spacing.sm,
   },
@@ -431,7 +449,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
+    minHeight: HIT_SIZE,
     borderRadius: radii.md,
     backgroundColor: colors.surface,
     borderWidth: 1.5,

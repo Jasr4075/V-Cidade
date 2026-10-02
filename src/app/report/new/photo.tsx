@@ -4,16 +4,15 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  useWindowDimensions,
   Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { usePageContainer, useResponsive } from '@/hooks/useResponsive';
 import * as ImagePicker from 'expo-image-picker';
 import { MAX_PHOTOS_PER_REPORT } from '@/constants';
 import { PhotoPreview } from '@/components/PhotoPreview';
 import { Button } from '@/components/Button';
-import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, layout } from '@/theme';
+import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight } from '@/theme';
 export default function NewReportPhotoScreen() {
   const {
     category: categoryId,
@@ -28,9 +27,8 @@ export default function NewReportPhotoScreen() {
   }>();
 
   const [photos, setPhotos] = useState<{ uri: string }[]>([]);
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const isWide = width >= 700;
+  const responsive = useResponsive();
+  const pageContainer = usePageContainer();
 
   const atLimit = photos.length >= MAX_PHOTOS_PER_REPORT;
 
@@ -102,9 +100,9 @@ export default function NewReportPhotoScreen() {
     <View style={styles.container}>
       <View
         style={[
+          pageContainer,
           styles.content,
-          { paddingTop: insets.top + spacing.sm },
-          isWide && styles.contentWide,
+          { paddingTop: responsive.topInset + spacing.sm },
         ]}
       >
         <View style={styles.header}>
@@ -193,7 +191,13 @@ export default function NewReportPhotoScreen() {
         </View>
       </View>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.base }]}>
+      <View
+        style={[
+          pageContainer,
+          styles.footer,
+          { paddingBottom: responsive.bottomInset + spacing.base },
+        ]}
+      >
         <Button
           title="Continuar para descrição"
           icon="arrow-right"
@@ -215,14 +219,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.base,
     paddingTop: spacing.lg,
-  },
-  contentWide: {
-    maxWidth: 560,
   },
 
   header: {
@@ -363,9 +360,6 @@ const styles = StyleSheet.create({
 
   footer: {
     width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.base,
     paddingTop: spacing.base,
     backgroundColor: colors.background,
     borderTopWidth: 1,

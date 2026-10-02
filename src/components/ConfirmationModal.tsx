@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Modal, ScrollView, Platform } from 'react-native';
+import { useResponsive } from '@/hooks/useResponsive';
 import { MaterialCommunityIcons, ICONS, type IconName, colors, palette, radii, shadow, spacing, fontSize, fontWeight, HIT_SIZE } from '@/theme';
 import { Button } from './Button';
 
@@ -35,6 +36,10 @@ export const ConfirmationModal = ({
   icon,
   confirmLoading = false,
 }: ConfirmationModalProps) => {
+  // Hook antes do `return null`: um hook condicional quebraria a ordem de
+  // hooks quando o modal abre e fecha.
+  const responsive = useResponsive();
+
   if (!visible) return null;
 
   const danger = variant === 'danger';
@@ -52,7 +57,11 @@ export const ConfirmationModal = ({
         />
 
         <View style={styles.center} pointerEvents="box-none">
-          <View style={styles.dialog} accessibilityViewIsModal accessibilityRole="alert">
+          <View
+            style={[styles.dialog, { maxWidth: responsive.dialogWidth }]}
+            accessibilityViewIsModal
+            accessibilityRole="alert"
+          >
             <View style={[styles.icon, { backgroundColor: iconBackground }]}>
               <MaterialCommunityIcons
                 name={icon ?? (danger ? ICONS.alertTriangle : ICONS.help)}
@@ -61,19 +70,23 @@ export const ConfirmationModal = ({
               />
             </View>
 
-            <Text style={styles.title} accessibilityRole="header">
-              {title}
-            </Text>
-            <Text style={styles.message}>{message}</Text>
+            <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+              <Text style={styles.title} accessibilityRole="header">
+                {title}
+              </Text>
+              <Text style={styles.message}>{message}</Text>
 
-            {confirmLoading ? (
-              <View style={styles.loading}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.loadingText}>Processando...</Text>
-              </View>
-            ) : null}
+              {confirmLoading ? (
+                <View style={styles.loading}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.loadingText}>Processando...</Text>
+                </View>
+              ) : null}
+            </ScrollView>
 
-            <View style={styles.actions}>
+            {/* Empilhados no celular: lado a lado sobrariam ~100px por botão e
+                rótulos como "Confirmar resolução" seriam cortados. */}
+            <View style={responsive.isMobile ? styles.actionsStacked : styles.actionsRow}>
               <Button
                 title={cancelLabel}
                 onPress={onCancel}
@@ -119,8 +132,16 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: radii.lg,
     backgroundColor: colors.surface,
-    shadowColor: palette.gray900,
-    ...(shadow.lg as object),
+        ...Platform.select({
+      web: { boxShadow: "0 10px 30px rgba(0,0,0,0.25)" },
+      default: shadow.lg as object,
+    }),
+  },
+  body: {
+    maxHeight: '60%',
+  },
+  bodyContent: {
+    gap: spacing.sm,
   },
   icon: {
     width: 44,
@@ -148,7 +169,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.small,
     color: colors.textMuted,
   },
-  actions: {
+  actionsStacked: {
+    flexDirection: 'column',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  actionsRow: {
     flexDirection: 'row',
     gap: spacing.md,
     marginTop: spacing.sm,

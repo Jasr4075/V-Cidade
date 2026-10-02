@@ -12,6 +12,17 @@ import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWe
  * precisa de chave nem de billing — forçar o Google exigiria GOOGLE_MAPS_IOS_API_KEY.
  */
 const MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
+
+/**
+ * O mapa nativo exige uma caixa com tamanho definido — sem `flex: 1` nem
+ * `height`, o Google Maps não renderiza nada. Já o fallback web cresce com o
+ * conteúdo (`MapView.web.tsx` exporta `false`).
+ *
+ * A tela lê este sinal para envolver o mapa num container alto só quando faz
+ * sentido, em vez de recortar a lista da web numa janela fixa.
+ */
+export const MAP_REQUIRES_FIXED_HEIGHT = true;
+
 interface MapViewProps {
   reports: Report[];
   region: Region;
@@ -185,7 +196,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.md,
     left: spacing.md,
-    right: spacing.md,
+    // Só `left`: com `right` também, a pílula esticaria de ponta a ponta do
+    // mapa. `maxWidth` mantém o rótulo legível e o chip com tamanho natural.
+    maxWidth: '82%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -225,9 +238,11 @@ const styles = StyleSheet.create({
   mapFailed: {
     position: 'absolute',
     top: '50%',
-    left: '50%',
-    transform: [{ translateX: -140 }, { translateY: -60 }],
-    width: 280,
+    left: spacing.md,
+    right: spacing.md,
+    // Centraliza sem `translateX` com valor fixo: a largura do cartão muda
+    // conforme a tela e um offset literal desalinhavaria em Landscape.
+    marginTop: -72,
     alignItems: 'center',
     gap: spacing.xs,
     padding: spacing.base,

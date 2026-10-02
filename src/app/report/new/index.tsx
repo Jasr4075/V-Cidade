@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCategories } from '@/hooks/useReports';
+import { usePageContainer, useResponsive } from '@/hooks/useResponsive';
 import { Category } from '@/types';
 import { CategoryGrid } from '@/components/CategoryGrid';
 import { Button } from '@/components/Button';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
-import { MaterialCommunityIcons, getCategoryIcon, colors, radii, spacing, fontSize, fontWeight, lineHeight, layout, HIT_SIZE } from '@/theme';
+import { MaterialCommunityIcons, getCategoryIcon, colors, radii, spacing, fontSize, fontWeight, lineHeight, HIT_SIZE } from '@/theme';
 const CATEGORY_EXAMPLES: Record<string, string> = {
   buraco: 'Buraco grande na rua',
   iluminacao: 'Poste sem luz ou queimado',
@@ -26,9 +26,8 @@ export default function NewReportCategoryScreen() {
   const { category: categoryId } = useLocalSearchParams<{ category?: string }>();
   const { categories, loading, error, refresh } = useCategories();
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const isWide = width >= 700;
+  const responsive = useResponsive();
+  const pageContainer = usePageContainer();
 
   useEffect(() => {
     if (!categoryId) return;
@@ -58,8 +57,8 @@ export default function NewReportCategoryScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + spacing.xxl },
+        pageContainer,
+        { paddingTop: responsive.topInset + spacing.sm, paddingBottom: responsive.bottomInset + spacing.xxl },
       ]}
     >
       <Pressable
@@ -129,11 +128,7 @@ export default function NewReportCategoryScreen() {
           />
         </View>
       ) : (
-        <CategoryGrid
-            categories={categories}
-            onPressCategory={setSelectedCategory}
-            layout={isWide ? 'grid' : 'horizontal'}
-          />
+        <CategoryGrid categories={categories} onPressCategory={setSelectedCategory} layout="grid" />
       )}
     </ScrollView>
   );
@@ -143,7 +138,6 @@ const styles = StyleSheet.create({
   backButton: {
     width: HIT_SIZE,
     height: HIT_SIZE,
-    marginHorizontal: spacing.base,
     marginBottom: spacing.sm,
     borderRadius: radii.pill,
     alignItems: 'center',
@@ -159,14 +153,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  content: {
-    width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
-    paddingTop: spacing.lg,
-  },
   header: {
-    paddingHorizontal: spacing.base,
     marginBottom: spacing.lg,
   },
   step: {
@@ -189,7 +176,7 @@ const styles = StyleSheet.create({
     lineHeight: fontSize.body * lineHeight.snug,
   },
   selectedSection: {
-    paddingHorizontal: spacing.base,
+    marginTop: spacing.base,
   },
   selectedCard: {
     flexDirection: 'row',
@@ -224,8 +211,8 @@ const styles = StyleSheet.create({
     lineHeight: fontSize.small * lineHeight.snug,
   },
   changeButton: {
-    width: 40,
-    height: 40,
+    width: HIT_SIZE,
+    height: HIT_SIZE,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',

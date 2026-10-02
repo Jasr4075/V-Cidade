@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+
+import { useResponsive } from '@/hooks/useResponsive';
 import { Coordinates, getCurrentLocation, reverseGeocode } from '@/services/location/location';
-import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, shadow, layout } from '@/theme';
+import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, shadow, HIT_SIZE } from '@/theme';
 /**
  * Respaldo de seleção de localização para web.
  *
@@ -44,9 +45,9 @@ export const LocationPicker = ({
   ctaDisabledLabel = 'Informe as coordenadas',
   onContinue,
 }: LocationPickerProps) => {
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const isWide = width >= 700;
+
+  const responsive = useResponsive();
+  const pad = responsive.gutter;
 
   const [latStr, setLatStr] = useState(
     initialLocation ? String(initialLocation.latitude) : ''
@@ -102,12 +103,18 @@ export const LocationPicker = ({
     <ScrollView
       style={styles.container}
       contentContainerStyle={[
+        {
+          width: '100%',
+          maxWidth: responsive.maxContentWidth + pad * 2,
+          alignSelf: 'center',
+          paddingLeft: pad,
+          paddingRight: pad,
+        },
         styles.content,
         {
-          paddingTop: insets.top + spacing.sm,
-          paddingBottom: insets.bottom + spacing.xxl,
+          paddingTop: responsive.topInset + spacing.sm,
+          paddingBottom: responsive.bottomInset + spacing.xxl,
         },
-        isWide && styles.contentWide,
       ]}
       keyboardShouldPersistTaps="handled"
     >
@@ -153,7 +160,7 @@ export const LocationPicker = ({
       <Text style={styles.subtitle}>{subtitle}</Text>
 
       <View style={styles.form}>
-        <View style={styles.row}>
+        <View style={responsive.isMobile ? styles.column : styles.row}>
           <View style={styles.field}>
             <Text style={styles.fieldLabel} nativeID="lat-label">
               Latitude
@@ -281,15 +288,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
     paddingTop: spacing.lg,
-    paddingHorizontal: spacing.base,
     gap: spacing.base,
-  },
-  contentWide: {
-    maxWidth: 560,
   },
 
   header: {
@@ -298,8 +298,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   iconButton: {
-    width: 48,
-    height: 48,
+    width: HIT_SIZE,
+    height: HIT_SIZE,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -377,6 +377,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
   },
+  // No celular os dois campos empilham: lado a lado sobrariam ~130px para
+  // cada coordenada, e o erro de digitação com sinal e 6 casas é comum.
+  column: {
+    gap: spacing.md,
+  },
   field: {
     flex: 1,
     gap: spacing.xs,
@@ -427,7 +432,7 @@ const styles = StyleSheet.create({
   },
 
   lookupButton: {
-    minHeight: 48,
+    minHeight: HIT_SIZE,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -456,7 +461,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    minHeight: 48,
+    minHeight: HIT_SIZE,
     borderRadius: radii.md,
     backgroundColor: colors.surface,
     borderWidth: 1.5,

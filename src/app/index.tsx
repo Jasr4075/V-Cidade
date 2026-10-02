@@ -5,22 +5,22 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
-  useWindowDimensions,
-  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCategories, useAnonymousId, useNearbyReports } from '@/hooks/useReports';
 import { useLocation } from '@/hooks/useLocation';
+import { useResponsive } from '@/hooks/useResponsive';
 import { CategoryGrid } from '@/components/CategoryGrid';
 import { ReportCard } from '@/components/ReportCard';
-import { MapViewComponent } from '@/components/MapView';
+import { MapViewComponent, MAP_REQUIRES_FIXED_HEIGHT } from '@/components/MapView';
 import { EmptyState } from '@/components/EmptyState';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
 import { Button } from '@/components/Button';
 import { DEFAULT_MAP_REGION } from '@/constants';
-import { MaterialCommunityIcons, ICONS, type IconName, colors, palette, radii, spacing, fontSize, fontWeight, lineHeight, layout } from '@/theme';
+import { GRID_ITEM_MIN_WIDTH, columnWidthPercent } from '@/theme';
+import { MaterialCommunityIcons, ICONS, type IconName, colors, palette, radii, spacing, fontSize, fontWeight, lineHeight } from '@/theme';
+
 export default function HomeScreen() {
   const { loading: anonLoading } = useAnonymousId();
   const {
@@ -41,11 +41,22 @@ export default function HomeScreen() {
   const [showMap, setShowMap] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  // Desktop / web: a coluna de conteúdo para de crescer e o espaço lateral
-  // vira fundo neutro, em vez de linhas de texto quilométricas.
-  const isWide = width >= 900;
+  const responsive = useResponsive();
+
+  // A margem lateral acompanha o viewport (com teto), em vez de um `16`
+  // fixo que fica apertado no celular e desperdiçado no ultrawide.
+  const pad = responsive.gutter;
+  const columnWidth = responsive.maxContentWidth;
+  const contentPadding = useMemo(
+    () => ({
+      paddingLeft: pad,
+      paddingRight: pad,
+      maxWidth: columnWidth + pad * 2,
+      alignSelf: 'center' as const,
+      width: '100%' as const,
+    }),
+    [pad, columnWidth]
+  );
 
   const { reports, loading: reportsLoading, error: reportsError, refresh: refreshReports } =
     useNearbyReports(
@@ -97,11 +108,66 @@ export default function HomeScreen() {
   }, []);
 
   if (anonLoading) {
-    return <LoadingState message="Preparando o Mapa da Cidade..." />;
+    return <LoadingState message="Preparando o vCidade..." />;
   }
 
+  // No desktop o mapa divide a tela com a lista em vez de empurrá-la para
+  // baixo — é o ganho de espaço mais visível em telas grandes.
+  const splitView = showMap && responsive.isLarge;
+
+  const mapBody = reportsLoading ? (
+    <LoadingState message="Carregando mapa..." />
+  ) : reportsError ? (
+    <ErrorState message={reportsError} onRetry={refreshReports} />
+  ) : (
+    <MapViewComponent
+      reports={reports}
+      region={mapRegion}
+      onRegionChange={handleMapRegionChange}
+      onPressMarker={handleReportPress}
+      categoryFilter={selectedCategoryId || undefined}
+      categoryFilterLabel={selectedCategoryLabel}
+      userLocation={userLocation}
+      style={styles.map}
+    />
+  );
+
+  const reportsBody = reportsLoading ? (
+    <LoadingState message="Carregando problemas..." />
+  ) : reportsError ? (
+    <ErrorState message={reportsError} onRetry={refreshReports} />
+  ) : reports.length > 0 ? (
+    <ReportGrid
+      reports={reports}
+      columns={
+        responsive.isMobile
+          ? 1
+          : responsive.columnsFor(columnWidth, GRID_ITEM_MIN_WIDTH.reportCard, spacing.md)
+      }
+      onPressReport={handleReportPress}
+      userLocation={userLocation}
+    />
+  ) : (
+    <EmptyState
+      icon="map-search-outline"
+      title="Nenhum problema por perto"
+      description={
+        selectedCategoryLabel
+          ? `Não há registros de ${selectedCategoryLabel.toLowerCase()} em um raio de 5 km. Tente outra categoria ou registre o primeiro.`
+          : 'Não há registros num raio de 5 km ao seu redor. Seja o primeiro a relato o que está acontecendo.'
+      }
+      actionLabel="Registrar problema"
+      onAction={handleStartReport}
+      secondaryActionLabel={selectedCategoryId ? 'Ver todas as categorias' : undefined}
+      onSecondaryAction={
+        selectedCategoryId ? () => setSelectedCategoryId(null) : undefined
+      }
+      compact
+    />
+  );
+
   const listHeader = (
-    <View>
+    <View style={contentPadding}>
       {locError ? (
         <View style={styles.locationNotice} accessibilityRole="alert">
           <MaterialCommunityIcons name={ICONS.info} size={20} color={colors.info} />
@@ -111,7 +177,6 @@ export default function HomeScreen() {
             onPress={getLocation}
             variant="ghost"
             size="small"
-            style={styles.locationNoticeAction}
           />
         </View>
       ) : null}
@@ -119,7 +184,7 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.title} accessibilityRole="header">
-            Mapa da Cidade
+            vCidade
           </Text>
           <Text style={styles.subtitle}>
             Acompanhe e relate problemas da sua cidade, sem precisar criar conta.
@@ -131,12 +196,23 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <View style={styles.hero}>
-        <MaterialCommunityIcons name="camera-outline" size={22} color={colors.onPrimary} />
-        <View style={styles.heroText}>
-          <Text style={styles.heroTitle} accessibilityRole="header">
-            Viu algum problema?
-          </Text>
+      <View
+        style={[
+          styles.hero,
+          responsive.isLarge && styles.heroRow,
+        ]}
+      >
+        <View style={[styles.heroText, responsive.isLarge && styles.heroTextRow]}>
+          <View style={styles.heroHeading}>
+            <MaterialCommunityIcons
+              name="camera-outline"
+              size={22}
+              color={colors.onPrimary}
+            />
+            <Text style={styles.heroTitle} accessibilityRole="header">
+              Viu algum problema?
+            </Text>
+          </View>
           <Text style={styles.heroSubtitle}>
             Registre em menos de um minuto. A categoria, o local e uma descrição são
             suficientes.
@@ -148,12 +224,12 @@ export default function HomeScreen() {
           onPress={handleStartReport}
           variant="primary"
           size="large"
-          style={styles.heroButton}
+          style={responsive.isLarge ? styles.heroButtonRow : styles.heroButton}
           accessibilityHint="Abre o formulário para registrar um novo problema"
         />
       </View>
 
-      <View style={styles.section}>
+      <View style={styles.sectionTight}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle} accessibilityRole="header">
             Categorias
@@ -174,11 +250,7 @@ export default function HomeScreen() {
         {catLoading ? (
           <LoadingState message="Carregando categorias..." compact />
         ) : catError ? (
-          <ErrorState
-            message={catError}
-            onRetry={refreshCategories}
-            compact
-          />
+          <ErrorState message={catError} onRetry={refreshCategories} compact />
         ) : (
           <CategoryGrid
             categories={categories}
@@ -191,10 +263,8 @@ export default function HomeScreen() {
   );
 
   const listFooter = (
-    <View style={styles.footer}>
-      <Text style={styles.footerText}>
-        Mapa da Cidade · dados de demonstração
-      </Text>
+    <View style={[styles.footer, contentPadding]}>
+      <Text style={styles.footerText}>vCidade · dados de demonstração</Text>
     </View>
   );
 
@@ -202,16 +272,21 @@ export default function HomeScreen() {
     <ScrollView
       style={styles.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-      contentContainerStyle={[
-        styles.contentContainer,
-        { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xxl },
-        isWide && styles.contentContainerWide,
-      ]}
+      contentContainerStyle={{
+        paddingTop: responsive.topInset + spacing.sm,
+        paddingBottom: responsive.bottomInset + spacing.xxl,
+      }}
     >
-      <View style={styles.column}>{listHeader}</View>
+      {listHeader}
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
+      <View
+        style={[
+          styles.section,
+          contentPadding,
+          splitView && styles.splitView,
+        ]}
+      >
+        <View style={[styles.sectionHeader, splitView && styles.sectionHeaderSplit]}>
           <Text style={styles.sectionTitle} accessibilityRole="header">
             {selectedCategoryLabel ?? 'Problemas próximos'}
             {reports.length > 0 ? (
@@ -236,63 +311,66 @@ export default function HomeScreen() {
         </View>
 
         {showMap ? (
-          <View style={styles.mapContainer}>
-            {reportsLoading ? (
-              <LoadingState message="Carregando mapa..." />
-            ) : reportsError ? (
-              <ErrorState message={reportsError} onRetry={refreshReports} />
-            ) : (
-              <MapViewComponent
-                reports={reports}
-                region={mapRegion}
-                onRegionChange={handleMapRegionChange}
-                onPressMarker={handleReportPress}
-                categoryFilter={selectedCategoryId || undefined}
-                categoryFilterLabel={selectedCategoryLabel}
-                userLocation={userLocation}
-                style={styles.map}
-              />
-            )}
+          <View
+            style={[
+              splitView ? styles.splitPane : styles.mapBlock,
+              // Altura fixa só onde o mapa realmente precisa dela. O fallback
+              // web cresce com a lista e ficaria cortado se fosse preso numa
+              // caixa de altura fixa.
+              MAP_REQUIRES_FIXED_HEIGHT && { height: responsive.mapHeight },
+              styles.mapSurface,
+            ]}
+          >
+            {mapBody}
           </View>
-        ) : reportsLoading ? (
-          <LoadingState message="Carregando problemas..." />
-        ) : reportsError ? (
-          <ErrorState message={reportsError} onRetry={refreshReports} />
-        ) : reports.length > 0 ? (
-          <View style={styles.cards}>
-            {reports.map((report) => (
-              <ReportCard
-                key={report.id}
-                report={report}
-                onPress={() => handleReportPress(report)}
-                userLocation={userLocation}
-              />
-            ))}
-          </View>
-        ) : (
-          <EmptyState
-            icon="map-search-outline"
-            title="Nenhum problema por perto"
-            description={
-              selectedCategoryLabel
-                ? `Não há registros de ${selectedCategoryLabel.toLowerCase()} em um raio de 5 km. Tente outra categoria ou registre o primeiro.`
-                : 'Não há registros num raio de 5 km ao seu redor. Seja o primeiro a relato o que está acontecendo.'
-            }
-            actionLabel="Registrar problema"
-            onAction={handleStartReport}
-            secondaryActionLabel={
-              selectedCategoryId ? 'Ver todas as categorias' : undefined
-            }
-            onSecondaryAction={
-              selectedCategoryId ? () => setSelectedCategoryId(null) : undefined
-            }
-            compact
-          />
-        )}
+        ) : null}
+
+        <View style={splitView ? styles.splitPane : undefined}>{reportsBody}</View>
       </View>
 
       {listFooter}
     </ScrollView>
+  );
+}
+
+/**
+ * Grid de ocorrências. O número de colunas vem do espaço real disponível,
+ * então a mesma lista rende uma coluna no celular e 2–3 no desktop sem que a
+ * tela precise saber sobre `Platform.OS`.
+ */
+function ReportGrid({
+  reports,
+  columns,
+  onPressReport,
+  userLocation,
+}: {
+  reports: Parameters<typeof ReportCard>[0]['report'][];
+  columns: number;
+  onPressReport: (report: { id: string }) => void;
+  userLocation?: { latitude: number; longitude: number } | null;
+}) {
+  const widthPercent = columnWidthPercent(columns);
+
+  return (
+    <View style={styles.cards}>
+      {reports.map((report) => (
+        <View
+          key={report.id}
+          style={{
+            width: widthPercent,
+            // O vão sai do padding do próprio item, então não é preciso
+            // `calc()` — que nem existe no Yoga.
+            paddingRight: columns > 1 ? spacing.md : 0, marginBottom: spacing.md,
+          }}
+        >
+          <ReportCard
+            report={report}
+            onPress={() => onPressReport(report)}
+            userLocation={userLocation}
+          />
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -326,23 +404,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  contentContainer: {
-    paddingBottom: spacing.xxl,
-  },
-  contentContainerWide: {
-    alignItems: 'center',
-  },
-  column: {
-    width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
-  },
 
   locationNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.base,
     marginTop: spacing.md,
     padding: spacing.md,
     borderRadius: radii.md,
@@ -356,20 +422,17 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: fontSize.small * lineHeight.snug,
   },
-  locationNoticeAction: {
-    minHeight: 40,
-  },
 
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    paddingHorizontal: spacing.base,
     paddingTop: spacing.lg,
     paddingBottom: spacing.base,
   },
   headerText: {
     flex: 1,
+    minWidth: 0,
   },
   title: {
     fontSize: fontSize.display,
@@ -401,14 +464,29 @@ const styles = StyleSheet.create({
   },
 
   hero: {
-    marginHorizontal: spacing.base,
     padding: spacing.lg,
     borderRadius: radii.lg,
     backgroundColor: colors.primary,
     gap: spacing.md,
   },
+  // Em telas grandes o texto ocupa o espaço e o botão vira um alvo à direita,
+  // em vez de uma barra gigante ocupando a linha inteira.
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xl,
+  },
   heroText: {
     gap: spacing.xxs,
+  },
+  heroTextRow: {
+    flex: 1,
+    minWidth: 0,
+  },
+  heroHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   heroTitle: {
     fontSize: fontSize.title,
@@ -423,20 +501,27 @@ const styles = StyleSheet.create({
   heroButton: {
     alignSelf: 'stretch',
   },
+  heroButtonRow: {
+    flexShrink: 0,
+  },
 
   section: {
     marginTop: spacing.xl,
-    width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
+    flexDirection: 'column',
+  },
+  sectionTight: {
+    marginTop: spacing.xl,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    paddingHorizontal: spacing.base,
     marginBottom: spacing.xs,
+  },
+  // Na visão dividida, o cabeçalho acompanha apenas a coluna da lista.
+  sectionHeaderSplit: {
+    alignSelf: 'flex-start',
   },
   sectionTitle: {
     fontSize: fontSize.title,
@@ -452,7 +537,6 @@ const styles = StyleSheet.create({
   sectionHint: {
     fontSize: fontSize.caption,
     color: colors.textMuted,
-    paddingHorizontal: spacing.base,
     marginBottom: spacing.md,
   },
 
@@ -464,37 +548,46 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSunken,
   },
   toggleButton: {
-    minHeight: 40,
     paddingHorizontal: spacing.md,
   },
   toggleButtonActive: {
     backgroundColor: colors.surface,
   },
 
-  mapContainer: {
-    // Na web o mapa vira lista de cartões: 320px esconderia os itens.
-    height: Platform.OS === 'web' ? 520 : layout.mapHeight,
-    marginHorizontal: spacing.base,
+  splitView: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: spacing.lg,
+    rowGap: spacing.lg,
+    alignItems: 'flex-start',
+  },
+  splitPane: {
+    // 560px evita que uma coluna fique estreita demais para o card na outra.
+    flexGrow: 1,
+    flexBasis: 320,
+    minWidth: 0,
+  },
+  mapBlock: {
+    marginBottom: spacing.lg,
+  },
+  mapSurface: {
     borderRadius: radii.lg,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  mapContainerWide: {
-    marginHorizontal: 0,
+    backgroundColor: colors.surface,
   },
   map: {
     flex: 1,
   },
 
   cards: {
-    paddingHorizontal: spacing.base,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingTop: spacing.md,
-    gap: spacing.md,
   },
 
   footer: {
-    paddingHorizontal: spacing.base,
     paddingTop: spacing.xxl,
     paddingBottom: spacing.base,
     alignItems: 'center',

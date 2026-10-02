@@ -208,8 +208,19 @@ export const shadow = {
   }),
 } as const;
 
-/** Largura máxima de conteúdo em tablets/desktop: linhas de texto não devem ser quilométricas. */
+/**
+ * Layout base.
+ *
+ * Estes valores são o *piso* — telas devem usar `useResponsive()` para obter
+ * `maxContentWidth`, `mapHeight` e afins já resolvidos para o tier atual.
+ * Mantidos aqui para componentes realmente neutros (ex.: skeleton) e para
+ * não quebrar nenhum import existente.
+ */
 export const layout = {
   maxContentWidth: 720,
   mapHeight: 320,
+  /** Raio/altura de folha inferior (bottom sheet) em telas grandes. */
+  sheetMaxWidth: 640,
+  /** Altura máxima de um diálogo antes de virar folha inferior. */
+  dialogMaxWidth: 600,
 } as const;

@@ -31,6 +31,6 @@ export default (): ExpoConfig => {
 
   return {
     ...config,
-    plugins: [...(plugins ?? []), mapsPlugin],
+    plugins: [...(plugins ?? []), 'expo-font', mapsPlugin],
   };
 };

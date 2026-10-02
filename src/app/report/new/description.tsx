@@ -12,14 +12,14 @@ import {
   Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { usePageContainer, useResponsive } from '@/hooks/useResponsive';
 import { useCreateReport, useCheckDuplicates, useAnonymousId } from '@/hooks/useReports';
 import { PhotoPreview } from '@/components/PhotoPreview';
 import { Button } from '@/components/Button';
 import { uploadPhoto } from '@/services/storage/storage';
 import { MAX_DESCRIPTION_LENGTH } from '@/constants';
 import { validateDescription } from '@/utils';
-import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, layout } from '@/theme';
+import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight} from '@/theme';
 export default function NewReportDescriptionScreen() {
   const { category, latitude, longitude, address, photos } = useLocalSearchParams<{
     category: string;
@@ -39,9 +39,8 @@ export default function NewReportDescriptionScreen() {
   const [checkedDuplicates, setCheckedDuplicates] = useState(false);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const isWide = width >= 700;
+  const responsive = useResponsive();
+  const pageContainer = usePageContainer();
 
   const coords = useMemo(
     () => ({ latitude: parseFloat(latitude!), longitude: parseFloat(longitude!) }),
@@ -152,9 +151,9 @@ export default function NewReportDescriptionScreen() {
     >
       <ScrollView
         contentContainerStyle={[
+          pageContainer,
           styles.content,
-          { paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + 120 },
-          isWide && styles.contentWide,
+          { paddingTop: responsive.topInset + spacing.sm, paddingBottom: responsive.bottomInset + 120 },
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -308,7 +307,13 @@ export default function NewReportDescriptionScreen() {
         ) : null}
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.base }]}>
+      <View
+        style={[
+          pageContainer,
+          styles.footer,
+          { paddingBottom: responsive.bottomInset + spacing.base },
+        ]}
+      >
         <Button
           title={
             createLoading
@@ -357,14 +362,7 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.base,
     paddingTop: spacing.lg,
-  },
-  contentWide: {
-    maxWidth: 620,
   },
 
   header: {
@@ -583,9 +581,6 @@ const styles = StyleSheet.create({
 
   footer: {
     width: '100%',
-    maxWidth: layout.maxContentWidth,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.base,
     paddingTop: spacing.base,
     backgroundColor: colors.background,
     borderTopWidth: 1,

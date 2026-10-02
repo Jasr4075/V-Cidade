@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Report } from '@/types';
 import { formatRelativeTime } from '@/utils';
 import { getStatusPalette, MaterialCommunityIcons, ICONS, getCategoryIcon, STATUS_ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, HIT_SIZE } from '@/theme';
+import { GRID_ITEM_MIN_WIDTH, columnWidthPercent } from '@/theme/breakpoints';
+import { useResponsive } from '@/hooks/useResponsive';
 import { STATUS_LABELS } from '@/constants';
 
 /**
@@ -14,7 +16,17 @@ import { STATUS_LABELS } from '@/constants';
  *
  * Em vez de sumir com a informação, a web mostra os mesmos problemas em uma
  * lista navegável: um mapa em branco seria perda de funcionalidade.
+ *
+ * Esta lista cresce com o conteúdo (não tem altura fixa nem scroll próprio):
+ * quem controla a rolagem é a tela que a hospeda. Ver `MAP_REQUIRES_FIXED_HEIGHT`.
  */
+
+/**
+ * A web NÃO precisa de altura fixa — o componente cresce com o conteúdo.
+ * O mapa nativo, sim, porque o Google Maps exige uma caixa com tamanho definido.
+ * A tela lê este sinal para não trancar a lista numa janela de 520px.
+ */
+export const MAP_REQUIRES_FIXED_HEIGHT = false;
 
 export interface Region {
   latitude: number;
@@ -45,10 +57,21 @@ export const MapViewComponent = React.memo(
     categoryFilterLabel,
     style,
   }: MapViewProps) => {
+    const responsive = useResponsive();
+
     const filteredReports = useMemo(
       () => (categoryFilter ? reports.filter((r) => r.category_id === categoryFilter) : reports),
       [reports, categoryFilter]
     );
+
+    // Em telas médias a lista vira 2 colunas e em desktop 2–3, para não
+    // transformar o painel do mapa numa coluna quilométrica.
+    const contentWidth = Math.max(240, responsive.width - responsive.horizontalPadding * 2);
+    const columns = responsive.isMobile
+      ? 1
+      : responsive.columnsFor(contentWidth, GRID_ITEM_MIN_WIDTH.compactCard, spacing.md);
+    const cardWidth = columnWidthPercent(columns);
+    const cardSpacer = spacing.md;
 
     return (
       <View style={[styles.container, style]}>
@@ -82,76 +105,85 @@ export const MapViewComponent = React.memo(
             </Text>
           </View>
         ) : (
-          filteredReports.map((report) => {
-            const selected = report.id === selectedReportId;
-            const tone = getStatusPalette(report.status);
+          <View style={styles.grid}>
+            {filteredReports.map((report) => {
+              const selected = report.id === selectedReportId;
+              const tone = getStatusPalette(report.status);
 
-            return (
-              <Pressable
-                key={report.id}
-                onPress={() => onPressMarker(report)}
-                accessibilityRole="button"
-                accessibilityLabel={`${report.title}, ${report.supports_count || 0} apoios`}
-                accessibilityState={{ selected }}
-                style={({ pressed }: { pressed: boolean }) => [
-                  styles.card,
-                  selected && styles.cardSelected,
-                  pressed && !selected && styles.cardPressed,
-                ]}
-              >
-                <View style={[styles.cardIcon, { backgroundColor: tone.bg }]}>
-                  <MaterialCommunityIcons
-                    name={getCategoryIcon(report.category?.slug)}
-                    size={18}
-                    color={tone.fg}
-                  />
-                </View>
-
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle} numberOfLines={2}>
-                    {report.title}
-                  </Text>
-                  {report.description ? (
-                    <Text style={styles.cardDescription} numberOfLines={2}>
-                      {report.description}
-                    </Text>
-                  ) : null}
-                  <View style={styles.cardMetaRow}>
-                    <View style={styles.metaItem}>
+              return (
+                <View
+                  key={report.id}
+                  style={{
+                    width: cardWidth,
+                    paddingRight: reportIndexIsLast(filteredReports, report) ? 0 : cardSpacer,
+                  }}
+                >
+                  <Pressable
+                    onPress={() => onPressMarker(report)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${report.title}, ${report.supports_count || 0} apoios`}
+                    accessibilityState={{ selected }}
+                    style={({ pressed }: { pressed: boolean }) => [
+                      styles.card,
+                      selected && styles.cardSelected,
+                      pressed && !selected && styles.cardPressed,
+                    ]}
+                  >
+                    <View style={[styles.cardIcon, { backgroundColor: tone.bg }]}>
                       <MaterialCommunityIcons
-                        name={STATUS_ICONS[report.status]}
-                        size={14}
+                        name={getCategoryIcon(report.category?.slug)}
+                        size={18}
                         color={tone.fg}
                       />
-                      <Text style={styles.cardMeta}>
-                        {STATUS_LABELS[report.status] || report.status}
-                      </Text>
                     </View>
-                    <View style={styles.metaItem}>
-                      <MaterialCommunityIcons name={ICONS.clock} size={14} color={colors.textMuted} />
-                      <Text style={styles.cardMeta}>
-                        {formatRelativeTime(report.created_at)}
-                      </Text>
-                    </View>
-                    <View style={styles.metaItem}>
-                      <MaterialCommunityIcons
-                        name={ICONS.thumbUp}
-                        size={14}
-                        color={colors.textMuted}
-                      />
-                      <Text style={styles.cardMeta}>{report.supports_count || 0}</Text>
-                    </View>
-                  </View>
-                </View>
 
-                <MaterialCommunityIcons
-                  name={ICONS.chevronRight}
-                  size={20}
-                  color={colors.textMuted}
-                />
-              </Pressable>
-            );
-          })
+                    <View style={styles.cardBody}>
+                      <Text style={styles.cardTitle} numberOfLines={2}>
+                        {report.title}
+                      </Text>
+                      {report.description ? (
+                        <Text style={styles.cardDescription} numberOfLines={2}>
+                          {report.description}
+                        </Text>
+                      ) : null}
+                      <View style={styles.cardMetaRow}>
+                        <View style={styles.metaItem}>
+                          <MaterialCommunityIcons
+                            name={STATUS_ICONS[report.status]}
+                            size={14}
+                            color={tone.fg}
+                          />
+                          <Text style={styles.cardMeta}>
+                            {STATUS_LABELS[report.status] || report.status}
+                          </Text>
+                        </View>
+                        <View style={styles.metaItem}>
+                          <MaterialCommunityIcons name={ICONS.clock} size={14} color={colors.textMuted} />
+                          <Text style={styles.cardMeta}>
+                            {formatRelativeTime(report.created_at)}
+                          </Text>
+                        </View>
+                        <View style={styles.metaItem}>
+                          <MaterialCommunityIcons
+                            name={ICONS.thumbUp}
+                            size={14}
+                            color={colors.textMuted}
+                          />
+                          <Text style={styles.cardMeta}>{report.supports_count || 0}</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <MaterialCommunityIcons
+                      name={ICONS.chevronRight}
+                      size={20}
+                      color={colors.textMuted}
+                    />
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
         )}
       </View>
     );
@@ -159,6 +191,11 @@ export const MapViewComponent = React.memo(
 );
 
 MapViewComponent.displayName = 'MapViewComponent';
+
+/** Evita padding à direita na última linha do grid. */
+function reportIndexIsLast(reports: Report[], report: Report): boolean {
+  return reports[reports.length - 1]?.id === report.id;
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -186,6 +223,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -195,6 +233,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primaryBorder,
   },
   filterBadgeText: {
+    flexShrink: 1,
     fontSize: fontSize.caption,
     fontWeight: fontWeight.semibold,
     color: colors.text,
@@ -215,6 +254,10 @@ const styles = StyleSheet.create({
     fontSize: fontSize.small,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   card: {
     flexDirection: 'row',
@@ -245,6 +288,7 @@ const styles = StyleSheet.create({
   cardBody: {
     flex: 1,
     gap: 2,
+    minWidth: 0,
   },
   cardTitle: {
     fontSize: fontSize.small,
