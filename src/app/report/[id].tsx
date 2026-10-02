@@ -1,40 +1,143 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Image, TouchableOpacity, Alert, Linking } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Modal,
+  TextInput,
+  Platform,
+  Linking,
+  useWindowDimensions,
+} from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useReport } from '@/hooks/useReports';
-import { useReportUpdates } from '@/hooks/useReports';
-import { useReportRelations } from '@/hooks/useReports';
-import { useResolutionConfirmation } from '@/hooks/useReports';
-import { useAnonymousId } from '@/hooks/useReports';
-import { useSupportReport } from '@/hooks/useReports';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  useReport,
+  useReportUpdates,
+  useReportRelations,
+  useResolutionConfirmation,
+  useAnonymousId,
+  useSupportReport,
+} from '@/hooks/useReports';
+import { searchReports } from '@/services/reports/reports';
 import { ReportStatusBadge } from '@/components/ReportStatus';
 import { Timeline } from '@/components/Timeline';
 import { SupportButton } from '@/components/SupportButton';
 import { Button } from '@/components/Button';
-import { EmptyState } from '@/components/EmptyState';
-import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
+import { LoadingState } from '@/components/LoadingState';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
 import { ReportRelationModal } from '@/components/ReportRelationModal';
-import { formatRelativeTime, getStatusColor } from '@/utils';
-import { STATUS_LABELS, UPDATE_STATUS_LABELS, RELATION_TYPE_LABELS } from '@/constants';
-import { Report } from '@/types';
+import { formatRelativeTime, formatDate } from '@/utils';
+import { UPDATE_STATUS_LABELS, RELATION_TYPE_LABELS, MAX_UPDATE_DESCRIPTION_LENGTH } from '@/constants';
+import { MaterialCommunityIcons, ICONS, UPDATE_STATUS_ICONS, getCategoryIcon, type IconName, colors, radii, spacing, fontSize, fontWeight, lineHeight, layout, HIT_SIZE } from '@/theme';
+import type { RelationType, UpdateStatus } from '@/types';
+
+const UPDATE_STATUSES: UpdateStatus[] = ['SAME', 'WORSE', 'BETTER', 'RESOLVED'];
 
 export default function ReportDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { anonymousId, loading: anonLoading } = useAnonymousId();
-  const { report, loading: reportLoading, error: reportError, refresh: refreshReport } = useReport(id!, anonymousId);
-  const { updates, loading: updatesLoading, addUpdate, refresh: refreshUpdates } = useReportUpdates(id!);
-  const { relations, loading: relationsLoading, addRelation, refresh: refreshRelations } = useReportRelations(id!);
-  const { confirmed, count, resolved, loading: confirmLoading, confirm, refresh: refreshConfirm } = useResolutionConfirmation(id!, anonymousId);
-  const { supported, supportsCount, loading: supportLoading, toggleSupport } = useSupportReport(id!, anonymousId);
+  const {
+    report,
+    loading: reportLoading,
+    error: reportError,
+    refresh: refreshReport,
+  } = useReport(id!, anonymousId);
+  const { updates, loading: updatesLoading, addUpdate, refresh: refreshUpdates } = useReportUpdates(
+    id!
+  );
+  const { relations, addRelation, refresh: refreshRelations } = useReportRelations(id!);
+  const {
+    confirmed,
+    count,
+    resolved,
+    loading: confirmLoading,
+    confirm,
+    refresh: refreshConfirm,
+  } = useResolutionConfirmation(id!, anonymousId);
+  const { supported, supportsCount, loading: supportLoading, toggleSupport } = useSupportReport(
+    id!,
+    anonymousId
+  );
 
   const [showRelationModal, setShowRelationModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [showInappropriateModal, setShowInappropriateModal] = useState(false);
-  const [selectedUpdateStatus, setSelectedUpdateStatus] = useState<'SAME' | 'WORSE' | 'BETTER' | 'RESOLVED'>('SAME');
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showInappropriateDialog, setShowInappropriateDialog] = useState(false);
+  const [selectedUpdateStatus, setSelectedUpdateStatus] = useState<UpdateStatus>('SAME');
   const [updateDescription, setUpdateDescription] = useState('');
-  const [updatePhotos, setUpdatePhotos] = useState<Array<{ uri: string }>>([]);
+  const [submittingUpdate, setSubmittingUpdate] = useState(false);
+
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 700;
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }, []);
+
+  const handleSupport = useCallback(async () => {
+    const newSupported = await toggleSupport(supportsCount);
+    if (newSupported !== supported) {
+      refreshReport();
+      refreshConfirm();
+    }
+  }, [toggleSupport, supportsCount, supported, refreshReport, refreshConfirm]);
+
+  const handleConfirmResolution = useCallback(async () => {
+    const success = await confirm();
+    setShowConfirmDialog(false);
+    if (success) {
+      refreshReport();
+      refreshConfirm();
+      refreshUpdates();
+    }
+  }, [confirm, refreshReport, refreshConfirm, refreshUpdates]);
+
+  const handleSubmitUpdate = useCallback(async () => {
+    setSubmittingUpdate(true);
+    const created = await addUpdate(
+      selectedUpdateStatus,
+      updateDescription.trim() || UPDATE_STATUS_LABELS[selectedUpdateStatus],
+      anonymousId
+    );
+    setSubmittingUpdate(false);
+
+    if (created) {
+      setShowUpdateModal(false);
+      setUpdateDescription('');
+      setSelectedUpdateStatus('SAME');
+      refreshReport();
+      refreshConfirm();
+    }
+  }, [addUpdate, selectedUpdateStatus, updateDescription, anonymousId, refreshReport, refreshConfirm]);
+
+  const handleInappropriate = useCallback(() => {
+    setShowInappropriateDialog(false);
+    // Moderação ainda não implementada: a confirmação deixa o caminho pronto.
+  }, []);
+
+  const handleOpenInMaps = useCallback(() => {
+    if (!report?.location) return;
+    const [longitude, latitude] = report.location.coordinates;
+    const url =
+      Platform.OS === 'ios'
+        ? `maps://?q=${latitude},${longitude}`
+        : `geo:${latitude},${longitude}?q=${latitude},${longitude}`;
+    Linking.openURL(url).catch(() => undefined);
+  }, [report]);
+
+  const handleRelate = useCallback(
+    async (relatedReportId: string, type: RelationType) => {
+      const relation = await addRelation(relatedReportId, type, anonymousId);
+      if (relation) refreshRelations();
+    },
+    [addRelation, anonymousId, refreshRelations]
+  );
 
   if (anonLoading || reportLoading) {
     return <LoadingState message="Carregando problema..." />;
@@ -42,335 +145,766 @@ export default function ReportDetailScreen() {
 
   if (reportError || !report) {
     return (
-      <ErrorState
-        message={reportError || 'Problema não encontrado'}
-        onRetry={refreshReport}
-      />
+      <View style={styles.screen}>
+        <TopBar onBack={handleBack} />
+        <ErrorState message={reportError || 'Problema não encontrado'} onRetry={refreshReport} />
+      </View>
     );
   }
 
-  const statusColor = getStatusColor(report.status);
-
-  const handleSupport = async () => {
-    const newSupported = await toggleSupport(supportsCount);
-    if (newSupported !== supported) {
-      refreshReport();
-      refreshConfirm();
-    }
-  };
-
-  const handleConfirmResolution = async () => {
-    const success = await confirm();
-    if (success) {
-      refreshReport();
-      refreshConfirm();
-      refreshUpdates();
-    }
-  };
-
-  const handleInappropriate = () => {
-    Alert.alert(
-      'Denunciar conteúdo',
-      'Tem certeza que deseja denunciar este problema como conteúdo inadequado?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Denunciar', style: 'destructive', onPress: () => {
-          // TODO: Implement report inappropriate
-          Alert.alert('Obrigado', 'Sua denúncia foi registrada e será analisada.');
-        }},
-      ]
-    );
-  };
-
-  const handleOpenInMaps = () => {
-    const [longitude, latitude] = report.location.coordinates;
-    const url = Platform.OS === 'ios'
-      ? `maps://?q=${latitude},${longitude}`
-      : `geo:${latitude},${longitude}?q=${latitude},${longitude}`;
-    Linking.openURL(url);
-  };
+  const supports = report.supports_count || 0;
+  const categoryLabel = report.category?.label || report.category_id;
+  const coordinates = report.location
+    ? `${report.location.coordinates[1].toFixed(6)}, ${report.location.coordinates[0].toFixed(6)}`
+    : 'Localização indisponível';
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <View style={styles.categoryRow}>
-          <Text style={styles.categoryIcon}>{report.category?.icon || '📍'}</Text>
-          <Text style={styles.categoryName}>{report.category?.label || report.category_id}</Text>
+    <View style={styles.screen}>
+      <TopBar onBack={handleBack} />
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + spacing.xxl },
+          isWide && styles.scrollWide,
+        ]}
+      >
+        <View style={styles.section}>
+          <View style={styles.headlineRow}>
+            <View style={styles.categoryIcon}>
+              <MaterialCommunityIcons
+                name={getCategoryIcon(report.category?.slug)}
+                size={20}
+                color={colors.primary}
+              />
+            </View>
+            <Text style={styles.categoryName} numberOfLines={1}>
+              {categoryLabel}
+            </Text>
+          </View>
+
+          <Text style={styles.title} accessibilityRole="header">
+            {report.title}
+          </Text>
+
+          <ReportStatusBadge
+            status={report.status}
+            size="large"
+            confirmationsCount={count}
+          />
         </View>
-        <ReportStatusBadge status={report.status} size="large" confirmationsCount={count} />
-      </View>
 
-      <Text style={styles.title}>{report.title}</Text>
-
-      <View style={styles.locationRow}>
-        <Text style={styles.locationIcon}>📍</Text>
-        <Text style={styles.locationText}>
-          {report.location.coordinates[1].toFixed(6)}, {report.location.coordinates[0].toFixed(6)}
-        </Text>
-        <TouchableOpacity style={styles.openMapsButton} onPress={handleOpenInMaps}>
-          <Text style={styles.openMapsButtonText}>Abrir no mapa</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{report.supports_count || 0}</Text>
-          <Text style={styles.statLabel}>apoios</Text>
+        <View style={styles.section}>
+          <View style={styles.locationCard}>
+            <MaterialCommunityIcons name="map-marker-outline" size={18} color={colors.textMuted} />
+            <Text style={styles.locationText} numberOfLines={2}>
+              {coordinates}
+            </Text>
+            {report.location ? (
+              <Pressable
+                onPress={handleOpenInMaps}
+                accessibilityRole="button"
+                accessibilityLabel="Abrir no aplicativo de mapas"
+                hitSlop={8}
+                style={({ pressed }: { pressed: boolean }) => [
+                  styles.mapsButton,
+                  pressed && styles.mapsButtonPressed,
+                ]}
+              >
+                <MaterialCommunityIcons name={ICONS.openInMaps} size={16} color={colors.primary} />
+                <Text style={styles.mapsButtonText}>Mapa</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{updates.length}</Text>
-          <Text style={styles.statLabel}>atualizações</Text>
+
+        <View style={styles.section}>
+          <View style={styles.stats}>
+            <Stat
+              icon={ICONS.thumbUp}
+              value={String(supports)}
+              label={supports === 1 ? 'apoio' : 'apoios'}
+            />
+            <View style={styles.statsDivider} />
+            <Stat
+              icon={ICONS.history}
+              value={String(updates.length)}
+              label={updates.length === 1 ? 'atualização' : 'atualizações'}
+            />
+            <View style={styles.statsDivider} />
+            <Stat
+              icon={ICONS.clock}
+              value={formatRelativeTime(report.updated_at)}
+              label="atualizado"
+            />
+          </View>
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{formatRelativeTime(report.updated_at)}</Text>
-          <Text style={styles.statLabel}>atualizado</Text>
-        </View>
-      </View>
 
-      <SupportButton
-        supported={supported}
-        count={report.supports_count || 0}
-        loading={supportLoading}
-        onPress={handleSupport}
-      />
-
-      <View style={styles.actionRow}>
-        <Button
-          title={confirmed ? 'Você confirmou' : 'Confirmar resolução'}
-          onPress={handleConfirmResolution}
-          variant={confirmed ? 'secondary' : 'primary'}
-          disabled={confirmed || resolved || confirmLoading}
-          loading={confirmLoading}
-          style={styles.actionButton}
-        />
-        <Button
-          title="Atualizar situação"
-          onPress={() => setShowUpdateModal(true)}
-          variant="outline"
-          style={styles.actionButton}
-        />
-      </View>
-
-      <View style={styles.actionRow}>
-        <Button
-          title="Relacionar registro"
-          onPress={() => setShowRelationModal(true)}
-          variant="outline"
-          style={styles.actionButton}
-        />
-        <Button
-          title="Denunciar conteúdo"
-          onPress={handleInappropriate}
-          variant="outline"
-          style={{ ...styles.actionButton, ...styles.dangerButton }}
-        />
-      </View>
-
-      <View style={styles.divider} />
-
-      <Text style={styles.sectionTitle}>Histórico</Text>
-      <Timeline
-        updates={updates}
-        initialReport={{
-          title: report.title,
-          created_at: report.created_at,
-        }}
-      />
-
-      {relations.length > 0 && (
-        <>
-          <View style={styles.divider} />
-          <Text style={styles.sectionTitle}>Registros relacionados</Text>
-          {relations.map((relation) => (
-            <View key={relation.id} style={styles.relationItem}>
-              <Text style={styles.relationType}>
-                {RELATION_TYPE_LABELS[relation.relation_type]}
-              </Text>
-              <View style={styles.relationInfo}>
-                <Text style={styles.relationTitle}>{relation.related_report?.title}</Text>
-                <Text style={styles.relationMeta}>
-                  {relation.related_report?.category?.label} • {relation.related_report?.supports_count || 0} apoios
+        {resolved ? (
+          <View style={styles.section}>
+            <View
+              style={styles.resolvedBanner}
+              accessibilityRole="text"
+              accessibilityLabel={`Problema resolvido, confirmado por ${count} ${
+                count === 1 ? 'pessoa' : 'pessoas'
+              }`}
+            >
+              <MaterialCommunityIcons
+                name="check-circle-outline"
+                size={24}
+                color={colors.onSuccessSoft}
+              />
+              <View style={styles.resolvedText}>
+                <Text style={styles.resolvedTitle}>Problema resolvido</Text>
+                <Text style={styles.resolvedBody}>
+                  Confirmado por {count} {count === 1 ? 'pessoa' : 'pessoas'}.
                 </Text>
               </View>
             </View>
-          ))}
-        </>
-      )}
-
-      {resolved && (
-        <>
-          <View style={styles.divider} />
-          <View style={styles.resolvedSection}>
-            <Text style={styles.resolvedIcon}>🟢</Text>
-            <Text style={styles.resolvedTitle}>Problema resolvido</Text>
-            <Text style={styles.resolvedText}>
-              Confirmado por {count} pessoa{count > 1 ? 's' : ''}.
-            </Text>
           </View>
-        </>
-      )}
-    </ScrollView>
+        ) : null}
+
+        <View style={styles.section}>
+          <SupportButton
+            supported={supported}
+            count={supports}
+            loading={supportLoading}
+            onPress={handleSupport}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Acompanhar</Text>
+          <View style={styles.actions}>
+            <Button
+              title={confirmed ? 'Resolução confirmada' : 'Confirmar resolução'}
+              onPress={() => setShowConfirmDialog(true)}
+              variant={confirmed ? 'secondary' : 'primary'}
+              disabled={confirmed || resolved || confirmLoading}
+              icon={confirmed ? ICONS.check : undefined}
+              accessibilityHint="Confirma que o problema foi resolvido"
+              fullWidth
+            />
+            <Button
+              title="Atualizar situação"
+              onPress={() => setShowUpdateModal(true)}
+              variant="outline"
+              icon={ICONS.edit}
+              accessibilityHint="Informa se o problema melhorou, piorou ou foi resolvido"
+              fullWidth
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Outros problemas</Text>
+          <View style={styles.actions}>
+            <Button
+              title="Relacionar registro"
+              onPress={() => setShowRelationModal(true)}
+              variant="outline"
+              icon={ICONS.link}
+              fullWidth
+            />
+            <Button
+              title="Denunciar conteúdo"
+              onPress={() => setShowInappropriateDialog(true)}
+              variant="ghost"
+              icon={ICONS.flag}
+              fullWidth
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Histórico</Text>
+          {updatesLoading ? (
+            <Text style={styles.helper}>Carregando histórico...</Text>
+          ) : (
+            <Timeline
+              updates={updates}
+              initialReport={{
+                title: report.title,
+                created_at: report.created_at,
+              }}
+            />
+          )}
+        </View>
+
+        {relations.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Registros relacionados</Text>
+            <View style={styles.relations}>
+              {relations.map((relation) => (
+                <Pressable
+                  key={relation.id}
+                  onPress={() =>
+                    relation.related_report?.id &&
+                    router.push(`/report/${relation.related_report.id}`)
+                  }
+                  disabled={!relation.related_report?.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${RELATION_TYPE_LABELS[relation.relation_type]}: ${
+                    relation.related_report?.title || 'registro'
+                  }`}
+                  style={({ pressed }: { pressed: boolean }) => [
+                    styles.relation,
+                    pressed && styles.relationPressed,
+                  ]}
+                >
+                  <View style={styles.relationType}>
+                    <Text style={styles.relationTypeText}>
+                      {RELATION_TYPE_LABELS[relation.relation_type]}
+                    </Text>
+                  </View>
+                  <View style={styles.relationInfo}>
+                    <Text style={styles.relationTitle} numberOfLines={1}>
+                      {relation.related_report?.title || 'Registro'}
+                    </Text>
+                    <Text style={styles.relationMeta}>
+                      {relation.related_report?.category?.label} ·{' '}
+                      {relation.related_report?.supports_count || 0} apoios
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={ICONS.chevronRight}
+                    size={20}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        <Text style={styles.footnote}>
+          Registrado em {formatDate(report.created_at)} · identificação anônima
+        </Text>
+      </ScrollView>
+
+      <ConfirmationModal
+        visible={showConfirmDialog}
+        title="Confirmar resolução?"
+        message={
+          confirmed
+            ? 'Você já confirmou que este problema foi resolvido.'
+            : 'Sua confirmação ajuda a equipe a priorizar o que ainda não foi resolvido.'
+        }
+        confirmLabel="Confirmar"
+        confirmLoading={confirmLoading}
+        onConfirm={handleConfirmResolution}
+        onCancel={() => setShowConfirmDialog(false)}
+      />
+
+      <ConfirmationModal
+        visible={showInappropriateDialog}
+        title="Denunciar conteúdo?"
+        message="Este problema não corresponde à realidade ou contém informação pessoal?"
+        confirmLabel="Denunciar"
+        variant="danger"
+        icon={ICONS.flag}
+        onConfirm={handleInappropriate}
+        onCancel={() => setShowInappropriateDialog(false)}
+      />
+
+      <ReportRelationModal
+        visible={showRelationModal}
+        currentReport={report}
+        onClose={() => setShowRelationModal(false)}
+        onRelate={handleRelate}
+        searchReports={searchReports}
+      />
+
+      <Modal
+        visible={showUpdateModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowUpdateModal(false)}
+      >
+        <View style={styles.sheetRoot}>
+          <Pressable
+            style={styles.sheetScrim}
+            onPress={() => setShowUpdateModal(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Fechar"
+          />
+
+          <View style={styles.sheet}>
+            <View style={styles.grabber} />
+
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetHeaderText}>
+                <Text style={styles.sheetTitle} accessibilityRole="header">
+                  Atualizar situação
+                </Text>
+                <Text style={styles.sheetSubtitle}>
+                  Como está o problema agora?
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowUpdateModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Fechar"
+                hitSlop={8}
+                style={({ pressed }: { pressed: boolean }) => [
+                  styles.sheetClose,
+                  pressed && styles.sheetClosePressed,
+                ]}
+              >
+                <MaterialCommunityIcons name={ICONS.close} size={20} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.statusOptions}>
+              {UPDATE_STATUSES.map((status) => {
+                const active = selectedUpdateStatus === status;
+                return (
+                  <Pressable
+                    key={status}
+                    onPress={() => setSelectedUpdateStatus(status)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={UPDATE_STATUS_LABELS[status]}
+                    style={({ pressed }: { pressed: boolean }) => [
+                      styles.statusOption,
+                      active && styles.statusOptionSelected,
+                      pressed && !active && styles.statusOptionPressed,
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name={UPDATE_STATUS_ICONS[status]}
+                      size={20}
+                      color={active ? colors.onPrimary : colors.textSecondary}
+                    />
+                    <Text style={[styles.statusOptionText, active && styles.statusOptionTextSelected]}>
+                      {UPDATE_STATUS_LABELS[status]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.updateField}>
+              <Text style={styles.updateLabel} nativeID="update-description-label">
+                Detalhes <Text style={styles.optional}>opcional</Text>
+              </Text>
+              <TextInput
+                style={styles.updateInput}
+                multiline
+                textAlignVertical="top"
+                placeholder="Ex: A equipe da prefeitura passou hoje e began o reparo."
+                placeholderTextColor={colors.textDisabled}
+                value={updateDescription}
+                onChangeText={setUpdateDescription}
+                maxLength={MAX_UPDATE_DESCRIPTION_LENGTH}
+                accessibilityLabel="Detalhes da atualização"
+                accessibilityLabelledBy="update-description-label"
+              />
+              <Text style={styles.updateCounter}>
+                {updateDescription.length}/{MAX_UPDATE_DESCRIPTION_LENGTH}
+              </Text>
+            </View>
+
+            <View style={styles.sheetFooter}>
+              <Button
+                title="Cancelar"
+                onPress={() => setShowUpdateModal(false)}
+                variant="outline"
+                style={styles.sheetButton}
+              />
+              <Button
+                title="Enviar atualização"
+                onPress={handleSubmitUpdate}
+                loading={submittingUpdate}
+                style={styles.sheetButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
-import { Platform } from 'react-native';
+function TopBar({ onBack }: { onBack: () => void }) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
+      <Pressable
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="Voltar"
+        style={({ pressed }: { pressed: boolean }) => [
+          styles.backButton,
+          pressed && styles.backButtonPressed,
+        ]}
+      >
+        <MaterialCommunityIcons name={ICONS.back} size={24} color={colors.text} />
+      </Pressable>
+    </View>
+  );
+}
+
+function Stat({ icon, value, label }: { icon: IconName; value: string; label: string }) {
+  return (
+    <View style={styles.stat} accessible accessibilityLabel={`${value} ${label}`}>
+      <MaterialCommunityIcons name={icon} size={18} color={colors.textMuted} />
+      <Text style={styles.statValue} numberOfLines={1}>
+        {value}
+      </Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background,
   },
-  contentContainer: {
-    paddingBottom: 32,
+  topBar: {
+    width: '100%',
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.background,
   },
-  header: {
-    backgroundColor: '#fff',
-    padding: 20,
-    paddingBottom: 16,
-  },
-  categoryRow: {
-    flexDirection: 'row',
+  backButton: {
+    width: HIT_SIZE,
+    height: HIT_SIZE,
+    borderRadius: radii.pill,
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  categoryIcon: {
-    fontSize: 24,
+  backButtonPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
-  categoryName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1A1A1A',
+
+  scroll: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.base,
+    gap: spacing.xs,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 16,
+  scrollWide: {
+    maxWidth: 640,
   },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-    flexWrap: 'wrap',
-  },
-  locationIcon: {
-    fontSize: 16,
-  },
-  locationText: {
-    fontSize: 14,
-    color: '#666',
-    flex: 1,
-  },
-  openMapsButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#E3F2FD',
-    borderRadius: 8,
-  },
-  openMapsButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1976D2',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 16,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1A1A1A',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-    paddingHorizontal: 0,
-  },
-  actionButton: {
-    flex: 1,
-  },
-  dangerButton: {
-    backgroundColor: '#fff',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-    marginVertical: 16,
+  section: {
+    gap: spacing.sm,
+    paddingTop: spacing.base,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
   },
-  relationItem: {
-    backgroundColor: '#fff',
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 12,
+  helper: {
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+  },
+
+  headlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.sm,
+  },
+  categoryIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
+  categoryName: {
+    flex: 1,
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+  title: {
+    fontSize: fontSize.display,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    lineHeight: fontSize.display * lineHeight.tight,
+    marginTop: spacing.xs,
+  },
+
+  locationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  locationText: {
+    flex: 1,
+    fontSize: fontSize.small,
+    color: colors.textSecondary,
+    lineHeight: fontSize.small * lineHeight.snug,
+  },
+  mapsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  mapsButtonPressed: {
+    backgroundColor: colors.primaryBorder,
+  },
+  mapsButtonText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+    color: colors.primary,
+  },
+
+  stats: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  stat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: spacing.xs,
+  },
+  statValue: {
+    fontSize: fontSize.title,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  statLabel: {
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+  },
+  statsDivider: {
+    width: 1,
+    marginVertical: spacing.xs,
+    backgroundColor: colors.divider,
+  },
+
+  resolvedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.base,
+    borderRadius: radii.md,
+    backgroundColor: colors.successSoft,
+    borderWidth: 1,
+    borderColor: colors.successBorder,
+  },
+  resolvedText: {
+    flex: 1,
+    gap: 2,
+  },
+  resolvedTitle: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.bold,
+    color: colors.onSuccessSoft,
+  },
+  resolvedBody: {
+    fontSize: fontSize.small,
+    color: colors.onSuccessSoft,
+  },
+
+  actions: {
+    gap: spacing.sm,
+  },
+
+  relations: {
+    gap: spacing.sm,
+  },
+  relation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  relationPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
   relationType: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1976D2',
-    backgroundColor: '#E3F2FD',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  relationTypeText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+    color: colors.primary,
   },
   relationInfo: {
     flex: 1,
+    gap: 2,
   },
   relationTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
   relationMeta: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 2,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
   },
-  resolvedSection: {
-    backgroundColor: '#E8F5E9',
-    marginHorizontal: 16,
-    padding: 20,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  resolvedIcon: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
-  resolvedTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#2E7D32',
-    marginBottom: 4,
-  },
-  resolvedText: {
-    fontSize: 15,
-    color: '#2E7D32',
+
+  footnote: {
+    paddingTop: spacing.xl,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
     textAlign: 'center',
+  },
+
+  sheetRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheetScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: colors.overlay,
+  },
+  sheet: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    paddingBottom: spacing.xl,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    backgroundColor: colors.surface,
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    marginTop: spacing.sm,
+    backgroundColor: colors.borderStrong,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.base,
+  },
+  sheetHeaderText: {
+    flex: 1,
+    gap: 2,
+  },
+  sheetTitle: {
+    fontSize: fontSize.title,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  sheetSubtitle: {
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+  },
+  sheetClose: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceSunken,
+  },
+  sheetClosePressed: {
+    backgroundColor: colors.borderStrong,
+  },
+
+  statusOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.base,
+  },
+  statusOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: HIT_SIZE,
+    paddingHorizontal: spacing.base,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  statusOptionSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  statusOptionPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  statusOptionText: {
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+  statusOptionTextSelected: {
+    color: colors.onPrimary,
+  },
+
+  updateField: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.base,
+    gap: spacing.sm,
+  },
+  updateLabel: {
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+  optional: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.regular,
+    color: colors.textMuted,
+  },
+  updateInput: {
+    minHeight: 96,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    fontSize: fontSize.body,
+    color: colors.text,
+    lineHeight: fontSize.body * lineHeight.normal,
+  },
+  updateCounter: {
+    alignSelf: 'flex-end',
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+  },
+
+  sheetFooter: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  sheetButton: {
+    flex: 1,
   },
 });

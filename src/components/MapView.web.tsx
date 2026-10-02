@@ -1,18 +1,21 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Report } from '@/types';
-import { getStatusColor, formatRelativeTime } from '@/utils';
+import { formatRelativeTime } from '@/utils';
+import { getStatusPalette, MaterialCommunityIcons, ICONS, getCategoryIcon, STATUS_ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, HIT_SIZE } from '@/theme';
+import { STATUS_LABELS } from '@/constants';
 
 /**
- * Respaldo de mapa para la plataforma web.
+ * Respaldo de mapa para a plataforma web.
  *
- * `react-native-maps` es una librería nativa (Android/iOS) que no es compatible
- * con react-native-web (usa `codegenNativeComponent`, removido de RN-W 0.21.x).
- * Expo resuelve automáticamente `MapView.native.tsx` en dispositivos y este
- * archivo (`.web.tsx`) en navegadores, sin llegar a importar `react-native-maps`.
+ * `react-native-maps` é nativo (Android/iOS) e não funciona com
+ * react-native-web. O Metro resolve `MapView.native.tsx` no celular e este
+ * arquivo (`.web.tsx`) no navegador, sem nunca importar `react-native-maps`.
+ *
+ * Em vez de sumir com a informação, a web mostra os mesmos problemas em uma
+ * lista navegável: um mapa em branco seria perda de funcionalidade.
  */
 
-// Tipo local equivalente a la `Region` de react-native-maps para mantener la firma.
 export interface Region {
   latitude: number;
   longitude: number;
@@ -27,67 +30,133 @@ interface MapViewProps {
   onPressMarker: (report: Report) => void;
   selectedReportId?: string;
   categoryFilter?: string;
+  categoryFilterLabel?: string;
   showUserLocation?: boolean;
   userLocation?: { latitude: number; longitude: number } | null;
   style?: object;
 }
 
-export const MapViewComponent = React.memo(({
-  reports,
-  onPressMarker,
-  selectedReportId,
-  categoryFilter,
-  style,
-}: MapViewProps) => {
-  const filteredReports = categoryFilter
-    ? reports.filter(r => r.category_id === categoryFilter)
-    : reports;
+export const MapViewComponent = React.memo(
+  ({
+    reports,
+    onPressMarker,
+    selectedReportId,
+    categoryFilter,
+    categoryFilterLabel,
+    style,
+  }: MapViewProps) => {
+    const filteredReports = useMemo(
+      () => (categoryFilter ? reports.filter((r) => r.category_id === categoryFilter) : reports),
+      [reports, categoryFilter]
+    );
 
-  return (
-    <View style={[styles.container, style]}>
-      <View style={styles.notice}>
-        <Text style={styles.noticeIcon}>🗺️</Text>
-        <Text style={styles.noticeText}>
-          El mapa interactivo está disponible en la app para Android/iOS.
-        </Text>
-      </View>
-
-      {filteredReports.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>
-            No se encontraron problemas {categoryFilter ? 'para este filtro' : 'cerca'}.
+    return (
+      <View style={[styles.container, style]}>
+        <View style={styles.notice}>
+          <MaterialCommunityIcons name={ICONS.map} size={18} color={colors.info} />
+          <Text style={styles.noticeText}>
+            O mapa interativo fica disponível no app para Android e iOS. Aqui você vê a mesma
+            lista de problemas abaixo.
           </Text>
         </View>
-      ) : (
-        filteredReports.map((report) => {
-          const isSelected = report.id === selectedReportId;
-          return (
-            <TouchableOpacity
-              key={report.id}
-              style={[styles.card, isSelected && styles.cardSelected]}
-              onPress={() => onPressMarker(report)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.dot, { backgroundColor: getStatusColor(report.status) }]} />
-              <View style={styles.cardBody}>
-                <Text style={styles.cardTitle}>
-                  {report.category?.icon || '📍'} {report.title}
-                </Text>
-                <Text style={styles.cardMeta} numberOfLines={2}>
-                  {report.description}
-                </Text>
-                <Text style={styles.cardMeta}>
-                  {formatRelativeTime(report.created_at)}
-                </Text>
-              </View>
-              <Text style={styles.cardArrow}>›</Text>
-            </TouchableOpacity>
-          );
-        })
-      )}
-    </View>
-  );
-});
+
+        {categoryFilter ? (
+          <View style={styles.filterBadge}>
+            <MaterialCommunityIcons name={ICONS.filter} size={16} color={colors.primary} />
+            <Text style={styles.filterBadgeText} numberOfLines={1}>
+              {categoryFilterLabel || 'Filtrado por categoria'}
+            </Text>
+          </View>
+        ) : null}
+
+        {filteredReports.length === 0 ? (
+          <View style={styles.empty}>
+            <MaterialCommunityIcons name={ICONS.empty} size={32} color={colors.textMuted} />
+            <Text style={styles.emptyTitle}>
+              {categoryFilter
+                ? 'Nenhum problema nesta categoria por perto'
+                : 'Nenhum problema encontrado por perto'}
+            </Text>
+            <Text style={styles.emptyBody}>
+              Volte mais tarde ou registre um problema novo.
+            </Text>
+          </View>
+        ) : (
+          filteredReports.map((report) => {
+            const selected = report.id === selectedReportId;
+            const tone = getStatusPalette(report.status);
+
+            return (
+              <Pressable
+                key={report.id}
+                onPress={() => onPressMarker(report)}
+                accessibilityRole="button"
+                accessibilityLabel={`${report.title}, ${report.supports_count || 0} apoios`}
+                accessibilityState={{ selected }}
+                style={({ pressed }: { pressed: boolean }) => [
+                  styles.card,
+                  selected && styles.cardSelected,
+                  pressed && !selected && styles.cardPressed,
+                ]}
+              >
+                <View style={[styles.cardIcon, { backgroundColor: tone.bg }]}>
+                  <MaterialCommunityIcons
+                    name={getCategoryIcon(report.category?.slug)}
+                    size={18}
+                    color={tone.fg}
+                  />
+                </View>
+
+                <View style={styles.cardBody}>
+                  <Text style={styles.cardTitle} numberOfLines={2}>
+                    {report.title}
+                  </Text>
+                  {report.description ? (
+                    <Text style={styles.cardDescription} numberOfLines={2}>
+                      {report.description}
+                    </Text>
+                  ) : null}
+                  <View style={styles.cardMetaRow}>
+                    <View style={styles.metaItem}>
+                      <MaterialCommunityIcons
+                        name={STATUS_ICONS[report.status]}
+                        size={14}
+                        color={tone.fg}
+                      />
+                      <Text style={styles.cardMeta}>
+                        {STATUS_LABELS[report.status] || report.status}
+                      </Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <MaterialCommunityIcons name={ICONS.clock} size={14} color={colors.textMuted} />
+                      <Text style={styles.cardMeta}>
+                        {formatRelativeTime(report.created_at)}
+                      </Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <MaterialCommunityIcons
+                        name={ICONS.thumbUp}
+                        size={14}
+                        color={colors.textMuted}
+                      />
+                      <Text style={styles.cardMeta}>{report.supports_count || 0}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <MaterialCommunityIcons
+                  name={ICONS.chevronRight}
+                  size={20}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+            );
+          })
+        )}
+      </View>
+    );
+  }
+);
 
 MapViewComponent.displayName = 'MapViewComponent';
 
@@ -97,67 +166,109 @@ const styles = StyleSheet.create({
   },
   notice: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EEF4FF',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  noticeIcon: {
-    fontSize: 18,
-    marginRight: 8,
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.infoSoft,
+    borderWidth: 1,
+    borderColor: colors.infoBorder,
   },
   noticeText: {
     flex: 1,
-    fontSize: 13,
-    color: '#1976D2',
-    lineHeight: 18,
+    fontSize: fontSize.caption,
+    color: colors.textSecondary,
+    lineHeight: fontSize.caption * lineHeight.snug,
+  },
+  filterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  filterBadgeText: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
   empty: {
-    padding: 20,
     alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.base,
   },
-  emptyText: {
-    fontSize: 14,
-    color: '#666',
+  emptyTitle: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    textAlign: 'center',
   },
   card: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: HIT_SIZE + 24,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   cardSelected: {
-    borderColor: '#1976D2',
-    backgroundColor: '#F5F9FF',
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
   },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 10,
-    marginTop: 14,
+  cardPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  cardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardBody: {
     flex: 1,
+    gap: 2,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
-  cardMeta: {
-    fontSize: 13,
-    color: '#666',
+  cardDescription: {
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+  },
+  cardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.md,
     marginTop: 2,
   },
-  cardArrow: {
-    fontSize: 20,
-    color: '#999',
-    alignSelf: 'center',
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  cardMeta: {
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
   },
 });

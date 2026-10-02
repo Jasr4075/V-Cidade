@@ -13,7 +13,7 @@ export function usePhotoPicker() {
     try {
       setError(null);
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -63,7 +63,7 @@ export function usePhotoPicker() {
           uploaded.push(photo);
         }
         return uploaded;
-      } catch (err) {
+      } catch {
         setError('Erro ao enviar fotos');
         return [];
       } finally {

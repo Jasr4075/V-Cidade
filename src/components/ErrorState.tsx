@@ -1,69 +1,43 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Button } from './Button';
+import { ViewStyle } from 'react-native';
+import { StateView } from './StateView';
+import { type IconName } from '@/theme/icons';
 
 interface ErrorStateProps {
   title?: string;
   message: string;
   onRetry?: () => void;
   retryLabel?: string;
-  style?: object;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+  icon?: IconName;
+  compact?: boolean;
+  style?: ViewStyle;
 }
 
 export const ErrorState = ({
-  title = 'Ops, algo deu errado',
+  title = 'Não foi possível carregar',
   message,
   onRetry,
   retryLabel = 'Tentar novamente',
+  secondaryActionLabel,
+  onSecondaryAction,
+  icon,
+  compact = false,
   style,
-}: ErrorStateProps) => {
-  return (
-    <View style={[styles.container, style]}>
-      <Text style={styles.icon}>⚠️</Text>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
-      {onRetry && (
-        <Button
-          title={retryLabel}
-          onPress={onRetry}
-          variant="primary"
-          size="medium"
-          style={styles.retryButton}
-        />
-      )}
-    </View>
-  );
-};
+}: ErrorStateProps) => (
+  <StateView
+    variant="error"
+    icon={icon}
+    title={title}
+    message={message}
+    actionLabel={onRetry ? retryLabel : undefined}
+    onAction={onRetry}
+    secondaryActionLabel={secondaryActionLabel}
+    onSecondaryAction={onSecondaryAction}
+    compact={compact}
+    style={style}
+  />
+);
 
 ErrorState.displayName = 'ErrorState';
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  icon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  message: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  retryButton: {
-    width: 'auto',
-    minWidth: 200,
-  },
-});

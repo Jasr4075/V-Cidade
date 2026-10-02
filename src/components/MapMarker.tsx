@@ -1,73 +1,87 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { ReportStatus } from '@/types';
-import { getStatusColor } from '@/utils';
-
+import { getStatusPalette, colors, radii, shadow, fontWeight, palette } from '@/theme';
 interface MapMarkerProps {
   status: ReportStatus;
   count?: number;
+  selected?: boolean;
   onPress?: () => void;
 }
 
-export const MapMarker = React.memo(({ status, count, onPress }: MapMarkerProps) => {
-  const color = getStatusColor(status);
-  const size = count && count > 1 ? 40 : 32;
+/**
+ * Marcador do mapa.
+ *
+ * O anel colorido mostra o status, mas o ícone dentro é que garante a leitura
+ * sem depender de cor. Quando há mais de um problema no mesmo ponto, o número
+ * aparece dentro do marcador em vez de num balão sobreposto.
+ */
+export const MapMarker = React.memo(
+  ({ status, count, selected = false, onPress }: MapMarkerProps) => {
+    const tone = getStatusPalette(status);
+    const size = selected ? 40 : (count ?? 0) > 1 ? 36 : 30;
+    const dot = size - 12;
 
-  const content = (
-    <View style={[styles.markerContainer, { width: size, height: size }]}>
+    const content = (
       <View
         style={[
-          styles.marker,
-          { backgroundColor: color, width: size - 8, height: size - 8 },
+          styles.outer,
+          {
+            width: size,
+            height: size,
+            borderRadius: radii.pill,
+            backgroundColor: tone.bg,
+            borderColor: selected ? colors.primary : tone.border,
+            borderWidth: selected ? 3 : 2,
+          },
         ]}
-      />
-      {count && count > 1 && (
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>{count}</Text>
-        </View>
-      )}
-    </View>
-  );
+      >
+        {count && count > 1 ? (
+          <Text style={[styles.count, { fontSize: size * 0.36 }]}>{count}</Text>
+        ) : (
+          <View style={[styles.dot, { width: dot, height: dot, borderRadius: dot / 2, backgroundColor: tone.fg }]} />
+        )}
+      </View>
+    );
 
-  if (onPress) {
-    return <TouchableOpacity onPress={onPress} activeOpacity={0.8}>{content}</TouchableOpacity>;
+    if (!onPress) return content;
+
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={
+          count && count > 1
+            ? `${count} problemas aqui`
+            : `Problema ${String(status).toLowerCase()}`
+        }
+        hitSlop={6}
+        style={({ pressed }: { pressed: boolean }) => [
+          pressed && styles.pressed,
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
   }
-
-  return content;
-});
+);
 
 MapMarker.displayName = 'MapMarker';
 
 const styles = StyleSheet.create({
-  markerContainer: {
+  outer: {
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: palette.gray900,
+    ...(shadow.md as object),
   },
-  marker: {
-    borderRadius: 999,
-    borderWidth: 3,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+  dot: {},
+  count: {
+    fontWeight: fontWeight.bold,
+    color: colors.text,
   },
-  countBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    minWidth: 18,
-    height: 18,
-    backgroundColor: '#1976D2',
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  countText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
+  pressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.94 }],
   },
 });

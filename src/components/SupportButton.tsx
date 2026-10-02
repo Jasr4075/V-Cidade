@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, HIT_SIZE } from '@/theme';
 interface SupportButtonProps {
   supported: boolean;
   count: number;
@@ -9,51 +9,69 @@ interface SupportButtonProps {
   disabled?: boolean;
 }
 
-export const SupportButton = ({ supported, count, loading, onPress, disabled }: SupportButtonProps) => {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const scaleAnim = React.useRef(new Animated.Value(1)).current;
+/**
+ * Ação de apoio. É a interação mais repetida do app, então o estado apoiado
+ * muda cor, ícone e texto — nunca só a cor.
+ */
+export const SupportButton = ({
+  supported,
+  count,
+  loading,
+  onPress,
+  disabled = false,
+}: SupportButtonProps) => {
+  const scale = useRef(new Animated.Value(1)).current;
 
-  React.useEffect(() => {
-    scaleAnim.setValue(supported ? 1.1 : 1);
-    Animated.spring(scaleAnim, {
-      toValue: supported ? 1.1 : 1,
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: supported ? 1 : 0.92,
       useNativeDriver: true,
     }).start();
-  }, [supported]);
+  }, [supported, scale]);
+
+  const supportsLabel =
+    count === 0 ? 'Ninguém apoia ainda' : count === 1 ? '1 apoio' : `${count} apoios`;
 
   return (
-    <TouchableOpacity
-      style={styles.container}
+    <Pressable
       onPress={onPress}
       disabled={loading || disabled}
-      activeOpacity={0.9}
       accessibilityRole="button"
-      accessibilityLabel={supported ? `Apoiado por ${count} pessoas` : `Apoiar, ${count} apoios`}
-      accessibilityState={{ selected: supported }}
+      accessibilityLabel={
+        supported ? `Você apoia este problema. ${supportsLabel}` : `Apoiar este problema. ${supportsLabel}`
+      }
+      accessibilityHint={
+        supported ? 'Toque para remover seu apoio' : 'Toque para mostrar que o problema te afeta'
+      }
+      accessibilityState={{ selected: supported, disabled: loading || disabled, busy: loading }}
+      style={({ pressed }: { pressed: boolean }) => [
+        styles.container,
+        supported && styles.containerSupported,
+        pressed && !loading && !disabled && styles.containerPressed,
+        (loading || disabled) && styles.containerDisabled,
+      ]}
     >
-      <Animated.View style={[styles.iconContainer, { transform: [{ scale: scaleAnim }] }]}>
-        <Text style={[
-          styles.icon,
-          supported && styles.iconSupported,
-        ]}>
-          {supported ? '✓' : '👍'}
-        </Text>
+      <Animated.View style={[styles.iconWrap, supported && styles.iconWrapSupported, { transform: [{ scale }] }]}>
+        <MaterialCommunityIcons
+          name={supported ? ICONS.thumbUpFilled : ICONS.thumbUp}
+          size={22}
+          color={supported ? colors.onSuccessSoft : colors.primary}
+        />
       </Animated.View>
-      <View style={styles.textContainer}>
-        <Text style={[
-          styles.countText,
-          supported && styles.countTextSupported,
-        ]}>
-          {count} {count === 1 ? 'apoio' : 'apoios'}
-        </Text>
-        <Text style={[
-          styles.labelText,
-          supported && styles.labelTextSupported,
-        ]}>
-          {supported ? 'Você apoia' : 'Apoiar'}
+
+      <View style={styles.text}>
+        <Text style={[styles.count, supported && styles.countSupported]}>{supportsLabel}</Text>
+        <Text style={[styles.label, supported && styles.labelSupported]}>
+          {supported ? 'Você apoia este problema' : 'Apoiar este problema'}
         </Text>
       </View>
-    </TouchableOpacity>
+
+      <MaterialCommunityIcons
+        name={supported ? ICONS.check : ICONS.plus}
+        size={20}
+        color={supported ? colors.onSuccessSoft : colors.textMuted}
+      />
+    </Pressable>
   );
 };
 
@@ -63,48 +81,54 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: '#F5F5F5',
-    gap: 12,
+    gap: spacing.md,
+    minHeight: HIT_SIZE + 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
+    borderRadius: radii.lg,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  iconContainer: {
+  containerSupported: {
+    borderColor: colors.successBorder,
+    backgroundColor: colors.successSoft,
+  },
+  containerPressed: {
+    backgroundColor: colors.surfaceSunken,
+  },
+  containerDisabled: {
+    opacity: 0.6,
+  },
+  iconWrap: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: '#fff',
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: colors.primarySoft,
   },
-  icon: {
-    fontSize: 20,
-    color: '#666',
+  iconWrapSupported: {
+    backgroundColor: colors.surface,
   },
-  iconSupported: {
-    color: '#43A047',
-  },
-  textContainer: {
+  text: {
     flex: 1,
+    gap: 1,
   },
-  countText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1A1A1A',
+  count: {
+    fontSize: fontSize.title,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
   },
-  countTextSupported: {
-    color: '#43A047',
+  countSupported: {
+    color: colors.onSuccessSoft,
   },
-  labelText: {
-    fontSize: 13,
-    color: '#666',
+  label: {
+    fontSize: fontSize.small,
+    color: colors.textMuted,
   },
-  labelTextSupported: {
-    color: '#43A047',
+  labelSupported: {
+    color: colors.onSuccessSoft,
+    fontWeight: fontWeight.medium,
   },
 });

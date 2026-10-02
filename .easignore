@@ -1,0 +1,34 @@
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+.metro-health-check*
+
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+.DS_Store
+*.pem
+
+# local env files are intentionally NOT ignored: EAS Build needs
+# GOOGLE_MAPS_API_KEY / GOOGLE_MAPS_IOS_API_KEY from .env to configure
+# react-native-maps. Keep real secrets out of git via .gitignore only.
+
+*.tsbuildinfo
+
+# local build artifacts
+/artifacts
+
+/ios
+/android

@@ -3,13 +3,91 @@ import {
   Report,
   Category,
   ReportUpdate,
-  Photo,
   Support,
   ReportRelation,
   DuplicateCheckResult,
   NearbyReportsParams,
 } from '@/types';
 import { RESOLUTION_CONFIRMATION_THRESHOLD } from '@/constants';
+
+type GeoPoint = Report['location'];
+
+/**
+ * Decodes an EWKB point, as returned by PostgREST for `geography` columns.
+ * Layout: endianness byte, uint32 type (0x20000001 = Point + SRID flag),
+ * optional uint32 SRID, then two float64 coordinates (x = longitude, y = latitude).
+ */
+function decodeEwkbPoint(hex: string): GeoPoint | null {
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length < 42) return null;
+
+  try {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+    }
+
+    const view = new DataView(bytes.buffer);
+    const littleEndian = view.getUint8(0) === 1;
+    let offset = 1;
+
+    const type = view.getUint32(offset, littleEndian);
+    offset += 4;
+
+    // EWKB sets the high bit to signal a trailing SRID.
+    if ((type & 0x20000000) !== 0) offset += 4;
+    if ((type & 0xffff) !== 1) return null;
+
+    const longitude = view.getFloat64(offset, littleEndian);
+    offset += 8;
+    const latitude = view.getFloat64(offset, littleEndian);
+
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+
+    return { type: 'Point', coordinates: [longitude, latitude] };
+  } catch {
+    return null;
+  }
+}
+
+function decodeWktPoint(wkt: string): GeoPoint | null {
+  const match = wkt.match(/^\s*POINT\s*\(\s*([-+0-9.eE]+)\s+([-+0-9.eE]+)\s*\)\s*$/i);
+  if (!match) return null;
+
+  const longitude = Number(match[1]);
+  const latitude = Number(match[2]);
+
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+
+  return { type: 'Point', coordinates: [longitude, latitude] };
+}
+
+/**
+ * `location` is a `geography(POINT, 4326)` column. PostgREST serialises it as an
+ * EWKB hex string, but the app works with GeoJSON, so every read is normalised
+ * here. Accepts GeoJSON, EWKB hex and WKT so direct table selects and RPC
+ * results behave the same.
+ */
+function normalizeLocation(value: unknown): GeoPoint | null {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value === 'object') {
+    const coordinates = (value as { coordinates?: unknown }).coordinates;
+    if (Array.isArray(coordinates) && coordinates.length >= 2) {
+      const longitude = Number(coordinates[0]);
+      const latitude = Number(coordinates[1]);
+      if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+        return { type: 'Point', coordinates: [longitude, latitude] };
+      }
+    }
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    return decodeEwkbPoint(value) ?? decodeWktPoint(value);
+  }
+
+  return null;
+}
 
 function mapReportFromDb(dbReport: unknown): Report {
   const r = dbReport as Record<string, unknown>;
@@ -19,7 +97,7 @@ function mapReportFromDb(dbReport: unknown): Report {
     title: r.title as string,
     description: r.description as string,
     status: r.status as Report['status'],
-    location: r.location as Report['location'],
+    location: normalizeLocation(r.location) as GeoPoint,
     anonymous_id: r.anonymous_id as string,
     created_at: r.created_at as string,
     updated_at: r.updated_at as string,
@@ -27,6 +105,14 @@ function mapReportFromDb(dbReport: unknown): Report {
     supports_count: r.supports_count as number | undefined,
     user_has_supported: r.user_has_supported as boolean | undefined,
     resolution_confirmations_count: r.resolution_confirmations_count as number | undefined,
+  };
+}
+
+function mapReportUpdateFromDb(dbUpdate: unknown): ReportUpdate {
+  const u = dbUpdate as Record<string, unknown>;
+  return {
+    ...(u as unknown as ReportUpdate),
+    location: normalizeLocation(u.location),
   };
 }
 
@@ -159,15 +245,17 @@ export async function removeSupport(reportId: string, anonymousId: string): Prom
 }
 
 export async function hasUserSupported(reportId: string, anonymousId: string): Promise<boolean> {
+  if (!anonymousId) return false;
+
   const { data, error } = await supabase
     .from('supports')
     .select('id')
     .eq('report_id', reportId)
     .eq('anonymous_id', anonymousId)
-    .single();
+    .limit(1);
 
-  if (error && error.code !== 'PGRST116') throw error;
-  return !!data;
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 export async function createReportUpdate(
@@ -191,7 +279,7 @@ export async function createReportUpdate(
     .single();
 
   if (error) throw error;
-  return data as ReportUpdate;
+  return mapReportUpdateFromDb(data);
 }
 
 export async function getReportUpdates(reportId: string): Promise<ReportUpdate[]> {
@@ -205,7 +293,7 @@ export async function getReportUpdates(reportId: string): Promise<ReportUpdate[]
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []) as ReportUpdate[];
+  return ((data || []) as unknown[]).map(mapReportUpdateFromDb);
 }
 
 export async function createReportRelation(
@@ -258,15 +346,17 @@ export async function confirmResolution(reportId: string, anonymousId: string): 
 }
 
 export async function hasUserConfirmedResolution(reportId: string, anonymousId: string): Promise<boolean> {
+  if (!anonymousId) return false;
+
   const { data, error } = await supabase
     .from('resolution_confirmations')
     .select('id')
     .eq('report_id', reportId)
     .eq('anonymous_id', anonymousId)
-    .single();
+    .limit(1);
 
-  if (error && error.code !== 'PGRST116') throw error;
-  return !!data;
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
 }
 
 export async function getResolutionConfirmationsCount(reportId: string): Promise<number> {

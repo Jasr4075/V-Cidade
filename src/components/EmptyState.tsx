@@ -1,68 +1,43 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { ViewStyle } from 'react-native';
+import { StateView } from './StateView';
+import { type IconName } from '@/theme/icons';
 
 interface EmptyStateProps {
-  icon?: string;
+  icon?: IconName;
   title: string;
   description?: string;
   actionLabel?: string;
   onAction?: () => void;
-  style?: object;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+  compact?: boolean;
+  style?: ViewStyle;
 }
 
 export const EmptyState = ({
-  icon = '📍',
+  icon = 'map-search-outline',
   title,
   description,
   actionLabel,
   onAction,
+  secondaryActionLabel,
+  onSecondaryAction,
+  compact = false,
   style,
-}: EmptyStateProps) => {
-  return (
-    <View style={[styles.container, style]}>
-      <Text style={styles.icon}>{icon}</Text>
-      <Text style={styles.title}>{title}</Text>
-      {description && <Text style={styles.description}>{description}</Text>}
-      {actionLabel && onAction && (
-        <Text style={styles.action} onPress={onAction}>
-          {actionLabel}
-        </Text>
-      )}
-    </View>
-  );
-};
+}: EmptyStateProps) => (
+  <StateView
+    variant="empty"
+    icon={icon}
+    title={title}
+    message={description}
+    actionLabel={actionLabel}
+    onAction={onAction}
+    secondaryActionLabel={secondaryActionLabel}
+    onSecondaryAction={onSecondaryAction}
+    compact={compact}
+    style={style}
+  />
+);
 
 EmptyState.displayName = 'EmptyState';
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  icon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  action: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1976D2',
-    textDecorationLine: 'underline',
-  },
-});

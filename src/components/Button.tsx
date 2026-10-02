@@ -1,32 +1,83 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
+import {
+  Pressable,
+  Text,
+  StyleSheet,
+  ViewStyle,
+  TextStyle,
+  StyleProp,
+  ActivityIndicator,
+  View,
+} from 'react-native';
+import { colors, radii, spacing, fontSize, fontWeight, HIT_SIZE } from '@/theme';
+import { MaterialCommunityIcons, type IconName } from '@/theme/icons';
+
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+export type ButtonSize = 'small' | 'medium' | 'large';
 
 interface ButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
-  size?: 'small' | 'medium' | 'large';
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
-  style?: ViewStyle;
+  /** Complementa o rótulo — nunca o substitui. */
+  icon?: IconName;
+  style?: StyleProp<ViewStyle>;
   textStyle?: TextStyle;
+  accessibilityHint?: string;
 }
 
-const variantStyles: Record<string, ViewStyle & { textColor: string }> = {
-  primary: { backgroundColor: '#1976D2', textColor: '#fff' },
-  secondary: { backgroundColor: '#E3F2FD', textColor: '#1976D2' },
-  outline: { backgroundColor: 'transparent', borderWidth: 2, borderColor: '#1976D2', textColor: '#1976D2' },
-  danger: { backgroundColor: '#E53935', textColor: '#fff' },
+interface VariantSpec {
+  bg: string;
+  fg: string;
+  border: string;
+  pressed: string;
+}
+
+const variants: Record<ButtonVariant, VariantSpec> = {
+  primary: {
+    bg: colors.primary,
+    fg: colors.onPrimary,
+    border: 'transparent',
+    pressed: colors.primaryPressed,
+  },
+  secondary: {
+    bg: colors.primarySoft,
+    fg: colors.primary,
+    border: colors.primaryBorder,
+    pressed: colors.primaryBorder,
+  },
+  outline: {
+    bg: colors.surface,
+    fg: colors.primary,
+    border: colors.primaryBorder,
+    pressed: colors.primarySoft,
+  },
+  ghost: {
+    bg: 'transparent',
+    fg: colors.textSecondary,
+    border: 'transparent',
+    pressed: colors.surfaceSunken,
+  },
+  danger: {
+    bg: colors.danger,
+    fg: colors.textInverse,
+    border: 'transparent',
+    pressed: colors.danger,
+  },
 };
 
-const sizeStyles: Record<string, ViewStyle & { fontSize: number }> = {
-  small: { paddingVertical: 8, paddingHorizontal: 16, fontSize: 14 },
-  medium: { paddingVertical: 14, paddingHorizontal: 24, fontSize: 16 },
-  large: { paddingVertical: 18, paddingHorizontal: 32, fontSize: 18 },
+/** Alturas mantidas em 48px ou mais: alvos de toque adequados para mãos maiores. */
+const sizes: Record<ButtonSize, { minHeight: number; paddingHorizontal: number; font: number; icon: number }> = {
+  small: { minHeight: HIT_SIZE, paddingHorizontal: spacing.base, font: fontSize.small, icon: 18 },
+  medium: { minHeight: HIT_SIZE, paddingHorizontal: spacing.lg, font: fontSize.body, icon: 20 },
+  large: { minHeight: 56, paddingHorizontal: spacing.xl, font: fontSize.title, icon: 22 },
 };
 
-export const Button = React.forwardRef<any, ButtonProps>(
+export const Button = React.forwardRef<View, ButtonProps>(
   (
     {
       title,
@@ -36,36 +87,65 @@ export const Button = React.forwardRef<any, ButtonProps>(
       disabled = false,
       loading = false,
       fullWidth = false,
+      icon,
       style,
       textStyle,
+      accessibilityHint,
     },
     ref
   ) => {
-    const vStyles = variantStyles[variant];
-    const sStyles = sizeStyles[size];
-    const widthStyle = fullWidth ? styles.fullWidth : {};
+    const v = variants[variant];
+    const s = sizes[size];
+    const inactive = disabled || loading;
 
     return (
-      <TouchableOpacity
+      <Pressable
         ref={ref}
-        style={[
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityHint={accessibilityHint}
+        accessibilityState={{ disabled: inactive, busy: loading }}
+        disabled={inactive}
+        style={({ pressed }: { pressed: boolean }) => [
           styles.base,
-          vStyles,
-          sStyles,
-          widthStyle,
+          {
+            backgroundColor: pressed && !inactive ? v.pressed : v.bg,
+            borderColor: v.border,
+            minHeight: s.minHeight,
+            paddingHorizontal: s.paddingHorizontal,
+          },
+          v.border !== 'transparent' && styles.bordered,
+          fullWidth && styles.fullWidth,
+          inactive && styles.inactive,
           style,
-          (disabled || loading) && styles.disabled,
         ]}
         onPress={onPress}
-        disabled={disabled || loading}
-        activeOpacity={0.8}
       >
         {loading ? (
-          <ActivityIndicator color={variant === 'primary' ? '#fff' : '#1976D2'} size="small" />
+          <ActivityIndicator color={v.fg} size="small" />
         ) : (
-          <Text style={[styles.text, { color: (vStyles as any).textColor }, { fontSize: (sStyles as any).fontSize }, textStyle]}>{title}</Text>
+          <View style={styles.content}>
+            {icon ? (
+              <MaterialCommunityIcons
+                name={icon}
+                size={s.icon}
+                color={inactive ? colors.textDisabled : v.fg}
+                style={styles.icon}
+              />
+            ) : null}
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.label,
+                { color: inactive ? colors.textDisabled : v.fg, fontSize: s.font },
+                textStyle,
+              ]}
+            >
+              {title}
+            </Text>
+          </View>
         )}
-      </TouchableOpacity>
+      </Pressable>
     );
   }
 );
@@ -74,19 +154,32 @@ Button.displayName = 'Button';
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: 12,
+    borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+  },
+  bordered: {
+    borderWidth: 1.5,
+  },
+  content: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  icon: {
+    marginTop: -1,
+  },
+  label: {
+    fontWeight: fontWeight.semibold,
+    textAlign: 'center',
   },
   fullWidth: {
     width: '100%',
   },
-  disabled: {
-    opacity: 0.6,
-  },
-  text: {
-    fontWeight: '600',
-    fontSize: 16,
+  inactive: {
+    backgroundColor: colors.surfaceSunken,
+    borderColor: colors.border,
   },
 });

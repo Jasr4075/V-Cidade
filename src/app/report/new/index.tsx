@@ -1,32 +1,50 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCategories } from '@/hooks/useReports';
 import { Category } from '@/types';
 import { CategoryGrid } from '@/components/CategoryGrid';
 import { Button } from '@/components/Button';
-import { EmptyState } from '@/components/EmptyState';
 import { LoadingState } from '@/components/LoadingState';
 import { ErrorState } from '@/components/ErrorState';
+import { MaterialCommunityIcons, getCategoryIcon, colors, radii, spacing, fontSize, fontWeight, lineHeight, layout, HIT_SIZE } from '@/theme';
+const CATEGORY_EXAMPLES: Record<string, string> = {
+  buraco: 'Buraco grande na rua',
+  iluminacao: 'Poste sem luz ou queimado',
+  alagamento: 'Rua alagada, água acumulada',
+  calcada: 'Calçada quebrada ou irregular',
+  lixo: 'Lixo acumulado na rua',
+  transito: 'Sinal de trânsito quebrado',
+  arvore: 'Árvore caída ou galho baixo',
+  acessibilidade: 'Rampa ou piso danificado',
+  obra: 'Obra sem sinalização',
+  outro: 'Outro tipo de problema',
+};
 
 export default function NewReportCategoryScreen() {
-  const { category: categorySlug } = useLocalSearchParams<{ category?: string }>();
+  const { category: categoryId } = useLocalSearchParams<{ category?: string }>();
   const { categories, loading, error, refresh } = useCategories();
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 700;
 
   useEffect(() => {
-    if (categorySlug) {
-      const cat = categories.find(c => c.slug === categorySlug || c.id === categorySlug);
-      if (cat) {
-        setSelectedCategory(cat);
-      }
-    }
-  }, [categorySlug, categories]);
+    if (!categoryId) return;
+    const found = categories.find((c) => c.slug === categoryId || c.id === categoryId);
+    if (found) setSelectedCategory(found);
+  }, [categoryId, categories]);
 
-  const handleCategoryPress = (category: Category) => {
-    setSelectedCategory(category);
-    router.push(`/report/new/location?category=${category.id}`);
-  };
+  const handleContinue = useCallback(() => {
+    if (!selectedCategory) return;
+    router.push(`/report/new/location?category=${selectedCategory.id}`);
+  }, [selectedCategory]);
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }, []);
 
   if (loading && categories.length === 0) {
     return <LoadingState message="Carregando categorias..." />;
@@ -37,129 +55,188 @@ export default function NewReportCategoryScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + spacing.xxl },
+      ]}
+    >
+      <Pressable
+        onPress={handleBack}
+        accessibilityRole="button"
+        accessibilityLabel="Voltar"
+        style={({ pressed }: { pressed: boolean }) => [
+          styles.backButton,
+          pressed && styles.backButtonPressed,
+        ]}
+      >
+        <MaterialCommunityIcons name="chevron-left" size={24} color={colors.text} />
+      </Pressable>
+
       <View style={styles.header}>
-        <Text style={styles.title}>Novo problema</Text>
+        <Text style={styles.step} accessibilityLabel={`Etapa 1 de 4`}>
+          ETAPA 1 DE 4
+        </Text>
+        <Text style={styles.title} accessibilityRole="header">
+          Que tipo de problema é?
+        </Text>
         <Text style={styles.subtitle}>
-          Escolha a categoria do problema que você deseja registrar
+          Escolha a categoria que melhor descreve o que você encontrou.
         </Text>
       </View>
 
       {selectedCategory ? (
-        <View style={styles.selectedCategory}>
-          <View style={styles.selectedCategoryCard}>
-            <View style={styles.selectedCategoryIcon}>
-              <Text style={styles.selectedCategoryIconText}>{selectedCategory.icon}</Text>
+        <View style={styles.selectedSection}>
+          <View style={styles.selectedCard}>
+            <View style={styles.selectedIconWell}>
+              <MaterialCommunityIcons
+                name={getCategoryIcon(selectedCategory.slug)}
+                size={28}
+                color={colors.primary}
+              />
             </View>
-            <View style={styles.selectedCategoryInfo}>
-              <Text style={styles.selectedCategoryLabel}>{selectedCategory.label}</Text>
-              <Text style={styles.selectedCategoryDesc}>
-                Registrar problema de {selectedCategory.label.toLowerCase()}
+            <View style={styles.selectedInfo}>
+              <Text style={styles.selectedLabel} accessibilityRole="header">
+                {selectedCategory.label}
+              </Text>
+              <Text style={styles.selectedExample}>
+                {CATEGORY_EXAMPLES[selectedCategory.slug] ?? `Problema de ${selectedCategory.label.toLowerCase()}`}
               </Text>
             </View>
-            <TouchableOpacity style={styles.changeCategoryButton} onPress={() => setSelectedCategory(null)}>
-              <Text style={styles.changeCategoryText}>Alterar</Text>
-            </TouchableOpacity>
+            <Pressable
+              onPress={() => setSelectedCategory(null)}
+              accessibilityRole="button"
+              accessibilityLabel={`Trocar categoria, atualmente ${selectedCategory.label}`}
+              hitSlop={8}
+              style={({ pressed }: { pressed: boolean }) => [
+                styles.changeButton,
+                pressed && styles.changeButtonPressed,
+              ]}
+            >
+              <MaterialCommunityIcons name="close" size={18} color={colors.primary} />
+            </Pressable>
           </View>
+
           <Button
-            title="Continuar para localização"
-            onPress={() => router.push(`/report/new/location?category=${selectedCategory.id}`)}
+            title="Continuar para a localização"
+            icon="arrow-right"
+            onPress={handleContinue}
             variant="primary"
             size="large"
             style={styles.continueButton}
+            accessibilityHint="Vai para a próxima etapa, onde você escolhe o local no mapa"
           />
         </View>
       ) : (
         <CategoryGrid
-          categories={categories}
-          onPressCategory={handleCategoryPress}
-          showAll={true}
-        />
+            categories={categories}
+            onPressCategory={setSelectedCategory}
+            layout={isWide ? 'grid' : 'horizontal'}
+          />
       )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-  },
-  contentContainer: {
-    paddingBottom: 32,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#666',
-    lineHeight: 22,
-  },
-  selectedCategory: {
-    paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 16,
-  },
-  selectedCategoryCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  selectedCategoryIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#E3F2FD',
+  backButton: {
+    width: HIT_SIZE,
+    height: HIT_SIZE,
+    marginHorizontal: spacing.base,
+    marginBottom: spacing.sm,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  selectedCategoryIconText: {
-    fontSize: 24,
+  backButtonPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
-  selectedCategoryInfo: {
+  container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
-  selectedCategoryLabel: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A1A',
+  content: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    paddingTop: spacing.lg,
   },
-  selectedCategoryDesc: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 2,
+  header: {
+    paddingHorizontal: spacing.base,
+    marginBottom: spacing.lg,
   },
-  changeCategoryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  step: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
   },
-  changeCategoryText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1976D2',
+  title: {
+    fontSize: fontSize.display,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    lineHeight: fontSize.display * lineHeight.tight,
+  },
+  subtitle: {
+    fontSize: fontSize.body,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    lineHeight: fontSize.body * lineHeight.snug,
+  },
+  selectedSection: {
+    paddingHorizontal: spacing.base,
+  },
+  selectedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.base,
+    borderRadius: radii.lg,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 2,
+    borderColor: colors.primaryBorder,
+  },
+  selectedIconWell: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  selectedInfo: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  selectedLabel: {
+    fontSize: fontSize.title,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+  },
+  selectedExample: {
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    lineHeight: fontSize.small * lineHeight.snug,
+  },
+  changeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  changeButtonPressed: {
+    backgroundColor: colors.primaryBorder,
   },
   continueButton: {
-    marginTop: 24,
-    marginHorizontal: 16,
+    marginTop: spacing.base,
   },
 });

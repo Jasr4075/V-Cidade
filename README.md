@@ -49,32 +49,73 @@ cp .env.example .env.local
 
 ## 🗄️ Backend Local (Supabase)
 
-### Opção 1: Supabase Local (Docker)
+O app usa `supabase-js`, então ele precisa da API do Supabase (PostgREST, Auth e
+Storage) — um PostgreSQL "cru" não basta. A forma suportada de rodar localmente
+é o Supabase CLI com Docker.
+
+### Requisitos
 
 ```bash
-# Inicie o Supabase local
+sudo apt-get install -y docker.io
+sudo usermod -aG docker $USER && sudo systemctl enable --now docker
+# encerre e abra a sessão novamente para o grupo docker ter efeito
+```
+
+### Subindo o ambiente
+
+```bash
+# Sobe Postgres + PostGIS, PostgREST, Auth, Storage e Kong
 supabase start
 
-# Aplique migrations
+# Aplica migrations e carrega os seeds (categorias + ocorrências de demo)
 supabase db reset
-
-# Ou aplique apenas as migrations
-supabase migration up
 ```
 
-### Opção 2: PostgreSQL Externo
+Serviços opcionais que o app não usa podem ser dispensados para subir mais rápido:
 
-Configure no `.env.local`:
-```env
-DATABASE_URL=postgresql://postgres:era.a@192.168.0.90:5432/cidade_teste_local
-```
-
-Execute as migrations manualmente:
 ```bash
-psql $DATABASE_URL -f supabase/migrations/20240101000000_initial_schema.sql
-psql $DATABASE_URL -f supabase/seed/categories.sql
-psql $DATABASE_URL -f supabase/seed/reports.sql
+supabase start -x realtime,imgproxy,studio,edge-runtime,logflare,vector,supavisor,supabase-analytics
 ```
+
+As chaves são fixas no Supabase local. O `supabase start` imprime a `ANON_KEY`;
+no projeto ela já está em `env.local`:
+
+```env
+EXPO_PUBLIC_SUPABASE_URL=http://localhost:54321
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon key impressa pelo supabase start>
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+```
+
+Verifique com `supabase status` e, se quiser, com o Studio em
+http://127.0.0.1:3000 (requer remover `studio` da lista `-x`).
+
+### Acessando o banco direto
+
+```bash
+psql postgresql://postgres:postgres@127.0.0.1:54322/postgres
+```
+
+### Rodando em um celular físico
+
+`localhost` no celular significa **o próprio aparelho**, não o computador. Por isso
+`EXPO_PUBLIC_SUPABASE_URL` continua `http://localhost:54321` e o app resolve o host
+real em tempo de execução a partir do endereço que o dispositivo usou para falar com
+o Metro (`Constants.expoConfig.hostUri`) — em `src/services/supabase.ts`.
+
+Requisitos:
+
+- Celular e computador na **mesma rede Wi-Fi**
+- `supabase start` escutando em `0.0.0.0` (padrão; confira com `ss -ltn | grep 54321`)
+- Metro acessível pela rede: `npx expo start --tunnel` ou `npx expo start` e leia o
+  QR code na rede local
+
+A URL resolvida é logada no console do Metro em desenvolvimento
+(`[supabase] usando API em ...`). Se aparecer `localhost` num celular, o host do
+Metro não foi identificado — nesse caso, defina `EXPO_PUBLIC_SUPABASE_URL` com o IP
+da máquina (por exemplo `http://192.168.17.23:54321`).
+
+Um URL que não seja loopback (Supabase Cloud, um host na rede) é sempre usado
+literalmente, sem resolução automática.
 
 ## 📱 Execução
 
@@ -137,13 +178,20 @@ src/
 - Usado para: apoios, atualizações, confirmações, relações
 - **Nenhum dado pessoal solicitado**
 
+O `anonymous_id` também viaja no header `x-anonymous-id` de cada requisição
+(injetado em `src/services/supabase.ts`). O PostgREST o expõe como o GUC
+`request.headers`, que a função `public.current_anonymous_id()` lê para as
+policies de RLS decidirem propriedade de uma linha — ver
+`supabase/migrations/20240101000200_anonymous_ownership_rls.sql`.
+
 ## 🧪 Dados de Demonstração
 
-O seed inclui ~15 ocorrências distribuídas em São Paulo:
-- Ativas, em melhoria, resolvidas
+O seed inclui 10 categorias e 18 ocorrências distribuídas em São Paulo:
+- 12 ativas, 2 em melhoria, 4 resolvidas
 - Várias categorias
-- Apoios, atualizações, relacionamentos
-- **Marcados como dados de demonstração**
+
+O seed **não** popula apoios, atualizações, fotos nem relacionamentos: a linha do
+tempo de cada ocorrência começa vazia e é preenchida pelo uso do app.
 
 ## 📝 Como Criar uma Migration
 

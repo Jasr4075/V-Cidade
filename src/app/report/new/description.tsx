@@ -1,17 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, Keyboard, Platform } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
-import { useCreateReport } from '@/hooks/useReports';
-import { useCheckDuplicates } from '@/hooks/useReports';
-import { useAnonymousId } from '@/hooks/useReports';
+import React, { useState, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  Pressable,
+  ScrollView,
+  useWindowDimensions,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+} from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCreateReport, useCheckDuplicates, useAnonymousId } from '@/hooks/useReports';
+import { PhotoPreview } from '@/components/PhotoPreview';
 import { Button } from '@/components/Button';
-import { Category } from '@/types';
-import { CATEGORIES } from '@/constants';
+import { uploadPhoto } from '@/services/storage/storage';
 import { MAX_DESCRIPTION_LENGTH } from '@/constants';
 import { validateDescription } from '@/utils';
-
+import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, layout } from '@/theme';
 export default function NewReportDescriptionScreen() {
-  const { category: categoryId, latitude, longitude, address, photos } = useLocalSearchParams<{
+  const { category, latitude, longitude, address, photos } = useLocalSearchParams<{
     category: string;
     latitude: string;
     longitude: string;
@@ -27,321 +37,558 @@ export default function NewReportDescriptionScreen() {
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [checkedDuplicates, setCheckedDuplicates] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
-  const category = CATEGORIES.find(c => c.id === categoryId) || CATEGORIES[0];
-  const coords = { latitude: parseFloat(latitude!), longitude: parseFloat(longitude!) };
-  const photoUris = photos ? JSON.parse(photos) : [];
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 700;
+
+  const coords = useMemo(
+    () => ({ latitude: parseFloat(latitude!), longitude: parseFloat(longitude!) }),
+    [latitude, longitude]
+  );
+
+  const photoUris = useMemo<{ uri: string }[]>(() => {
+    if (!photos) return [];
+    try {
+      const parsed = JSON.parse(photos);
+      return Array.isArray(parsed) ? parsed.map((uri: string) => ({ uri })) : [];
+    } catch {
+      return [];
+    }
+  }, [photos]);
 
   const handleDescriptionChange = useCallback((text: string) => {
     setDescription(text);
-    const error = validateDescription(text, MAX_DESCRIPTION_LENGTH);
-    setDescriptionError(error);
+    // Validação só aparece depois da primeira interação: não se corrige o
+    // usuário enquanto ele ainda está começando a escrever.
+    if (text.trim().length > 0) {
+      setDescriptionError(validateDescription(text, MAX_DESCRIPTION_LENGTH));
+    } else {
+      setDescriptionError(null);
+    }
   }, []);
 
-  const handleSubmit = async () => {
+  const submit = useCallback(async () => {
+    // O título guarda o endereço, não a categoria: a categoria já aparece no
+    // card e no detalhe, e um título igual à categoria não diz nada ao leitor.
+    const report = await create(
+      category!,
+      address && address !== 'undefined' && address.trim() ? address : 'Problema reportado',
+      description,
+      coords.latitude,
+      coords.longitude,
+      anonymousId
+    );
+    if (!report) return;
+
+    if (photoUris.length > 0) {
+      setUploadingPhotos(true);
+      const results = await Promise.allSettled(
+        photoUris.map((photo) => uploadPhoto(photo.uri, report.id))
+      );
+      setUploadingPhotos(false);
+
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      if (failed > 0) {
+        // O relato já foi salvo: avisar e seguir é melhor que travar o fluxo.
+        Alert.alert(
+          'Registro salvo',
+          `${failed} de ${photoUris.length} ${
+            photoUris.length === 1 ? 'foto não pôde ser enviada' : 'fotos não puderam ser enviadas'
+          }. O problema foi registrado mesmo assim.`
+        );
+      }
+    }
+
+    router.replace(`/report/${report.id}`);
+  }, [category, address, description, coords, anonymousId, create, photoUris]);
+
+  const handleIgnoreDuplicates = useCallback(() => {
+    setCheckedDuplicates(true);
+    setShowDuplicates(false);
+    void submit();
+  }, [submit]);
+
+  const handleSubmit = useCallback(async () => {
     const error = validateDescription(description, MAX_DESCRIPTION_LENGTH);
     if (error) {
       setDescriptionError(error);
       return;
     }
 
-    if (!checkedDuplicates && !showDuplicates) {
-      setShowDuplicates(true);
+    // Na primeira passagem apenas verifica duplicatas; só registra depois.
+    if (!checkedDuplicates) {
+      const results = await check(category!, coords.latitude, coords.longitude, 100);
+      if (results.length > 0) {
+        setShowDuplicates(true);
+        return;
+      }
+      setCheckedDuplicates(true);
+      await submit();
       return;
     }
 
-    const report = await create(
-      categoryId,
-      category.label,
-      description,
-      coords.latitude,
-      coords.longitude,
-      anonymousId
-    );
-
-    if (report) {
-      router.replace(`/report/${report.id}`);
-    } else if (createError) {
-      Alert.alert('Erro', createError);
-    }
-  };
-
-  const handleCheckDuplicates = async () => {
-    const results = await check(categoryId, coords.latitude, coords.longitude, 100);
-    if (results.length > 0) {
-      setShowDuplicates(true);
-    } else {
-      setCheckedDuplicates(true);
-      handleSubmit();
-    }
-  };
-
-  const handleIgnoreDuplicates = () => {
-    setCheckedDuplicates(true);
-    setShowDuplicates(false);
-    handleSubmit();
-  };
+    await submit();
+  }, [description, checkedDuplicates, check, category, coords, submit]);
 
   if (anonLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text>Iniciando...</Text>
+      <View style={styles.loading}>
+        <MaterialCommunityIcons name={ICONS.inbox} size={32} color={colors.primary} />
+        <Text style={styles.loadingText}>Preparando o registro...</Text>
       </View>
     );
   }
 
+  const busy = createLoading || duplicateLoading || uploadingPhotos;
+  const duplicatesPending = showDuplicates && !checkedDuplicates;
+
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>Voltar</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Descrição</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + 120 },
+          isWide && styles.contentWide,
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Voltar"
+            style={({ pressed }: { pressed: boolean }) => [
+              styles.iconButton,
+              pressed && styles.iconButtonPressed,
+            ]}
+          >
+            <MaterialCommunityIcons name={ICONS.back} size={24} color={colors.text} />
+          </Pressable>
 
-      <View style={styles.categoryBadge}>
-        <Text style={styles.categoryBadgeIcon}>{category.icon}</Text>
-        <Text style={styles.categoryBadgeText}>{category.label}</Text>
-      </View>
-
-      <View style={styles.locationInfo}>
-        <Text style={styles.locationLabel}>📍 {address}</Text>
-      </View>
-
-      {photoUris.length > 0 && (
-        <View style={styles.photoPreview}>
-          {photoUris.slice(0, 3).map((uri: string, index: number) => (
-            <View key={index} style={styles.photoThumb}>
-              {/* Photo thumbnail */}
-            </View>
-          ))}
-        </View>
-      )}
-
-      <View style={styles.descriptionSection}>
-        <Text style={styles.label}>Descreva o problema *</Text>
-        <TextInput
-          style={styles.textInput}
-          multiline
-          numberOfLines={6}
-          placeholder="Ex: Buraco grande na esquina com a Rua X, perigo para motos e carros..."
-          value={description}
-          onChangeText={handleDescriptionChange}
-          maxLength={MAX_DESCRIPTION_LENGTH}
-          placeholderTextColor="#999"
-        />
-        <View style={styles.inputFooter}>
-          {descriptionError ? (
-            <Text style={styles.errorText}>{descriptionError}</Text>
-          ) : (
-            <Text style={styles.charCount}>
-              {description.length}/{MAX_DESCRIPTION_LENGTH}
+          <View style={styles.headerText}>
+            <Text style={styles.step}>ETAPA 4 DE 4</Text>
+            <Text style={styles.title} accessibilityRole="header">
+              Descreva o problema
             </Text>
-          )}
-        </View>
-      </View>
-
-      {showDuplicates && duplicates.length > 0 && (
-        <View style={styles.duplicateWarning}>
-          <Text style={styles.duplicateTitle}>⚠️ Problemas semelhantes próximos</Text>
-          <Text style={styles.duplicateText}>
-            Encontramos {duplicates.length} problema{duplicates.length > 1 ? 's' : ''} da mesma categoria perto deste local:
-          </Text>
-          {duplicates.slice(0, 3).map((dup) => (
-            <TouchableOpacity key={dup.report.id} style={styles.duplicateItem} onPress={() => router.push(`/report/${dup.report.id}`)}>
-              <Text style={styles.duplicateItemTitle}>{dup.report.title}</Text>
-              <Text style={styles.duplicateItemMeta}>
-                {dup.report.category?.label} • {formatDistance(dup.distance)} daqui • {dup.report.supports_count || 0} apoios
-              </Text>
-            </TouchableOpacity>
-          ))}
-          <View style={styles.duplicateActions}>
-            <Button title="Ver todos" onPress={() => router.push('/search')} variant="outline" style={styles.duplicateButton} />
-            <Button title="Registrar mesmo assim" onPress={handleIgnoreDuplicates} variant="danger" style={styles.duplicateButton} />
           </View>
         </View>
-      )}
 
-      <View style={styles.bottomButton}>
+        <Text style={styles.subtitle}>
+          Quanto mais detalhe, mais rápido alguém entende o que precisa ser feito.
+        </Text>
+
+        {address && address !== 'undefined' ? (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <MaterialCommunityIcons name="map-marker-outline" size={18} color={colors.textMuted} />
+              <Text style={styles.summaryText} numberOfLines={2}>
+                {address}
+              </Text>
+            </View>
+            {photoUris.length > 0 ? (
+              <View style={styles.summaryPhotos}>
+                <MaterialCommunityIcons name={ICONS.image} size={16} color={colors.textMuted} />
+                <Text style={styles.summaryText}>
+                  {photoUris.length} {photoUris.length === 1 ? 'foto' : 'fotos'}
+                </Text>
+                <PhotoPreview photos={photoUris} height={64} />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.field}>
+          <Text style={styles.label} nativeID="desc-label">
+            Descrição <Text style={styles.required}>*</Text>
+          </Text>
+          <TextInput
+            style={[styles.input, descriptionError ? styles.inputError : undefined]}
+            multiline
+            textAlignVertical="top"
+            placeholder="Ex: Buraco grande na esquina, com uns 30 cm de profundidade. Chuva deixa alagado e os carros batem."
+            placeholderTextColor={colors.textDisabled}
+            value={description}
+            onChangeText={handleDescriptionChange}
+            maxLength={MAX_DESCRIPTION_LENGTH}
+            accessibilityLabel="Descrição do problema"
+            accessibilityLabelledBy="desc-label"
+          />
+
+          <View style={styles.footerRow}>
+            {descriptionError ? (
+              <View style={styles.errorBox}>
+                <MaterialCommunityIcons name={ICONS.alert} size={16} color={colors.danger} />
+                <Text style={styles.errorText}>{descriptionError}</Text>
+              </View>
+            ) : (
+              <Text style={styles.helperText}>
+                {description.trim().length === 0
+                  ? 'Campo obrigatório.'
+                  : 'Quanto mais específico, melhor.'}
+              </Text>
+            )}
+            <Text
+              style={[
+                styles.counter,
+                description.length >= MAX_DESCRIPTION_LENGTH && styles.counterFull,
+              ]}
+            >
+              {description.length}/{MAX_DESCRIPTION_LENGTH}
+            </Text>
+          </View>
+        </View>
+
+        {duplicatesPending ? (
+          <View style={styles.duplicates} accessibilityRole="alert">
+            <View style={styles.duplicatesHeader}>
+              <MaterialCommunityIcons name={ICONS.alertTriangle} size={20} color={colors.warning} />
+              <Text style={styles.duplicatesTitle}>Problemas parecidos por aqui</Text>
+            </View>
+            <Text style={styles.duplicatesText}>
+              Encontramos {duplicates.length}{' '}
+              {duplicates.length === 1 ? 'registro' : 'registros'} da mesma categoria perto
+              deste local. Confira se o seu caso já foi registrado.
+            </Text>
+
+            {duplicates.slice(0, 3).map((dup) => (
+              <Pressable
+                key={dup.report.id}
+                onPress={() => router.push(`/report/${dup.report.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Abrir registro: ${dup.report.title}`}
+                style={({ pressed }: { pressed: boolean }) => [
+                  styles.duplicateItem,
+                  pressed && styles.duplicateItemPressed,
+                ]}
+              >
+                <View style={styles.duplicateInfo}>
+                  <Text style={styles.duplicateItemTitle} numberOfLines={1}>
+                    {dup.report.title}
+                  </Text>
+                  <Text style={styles.duplicateItemMeta}>
+                    {dup.report.category?.label} · {formatDistance(dup.distance)} ·{' '}
+                    {dup.report.supports_count ?? 0} apoios
+                  </Text>
+                </View>
+                <MaterialCommunityIcons
+                  name={ICONS.chevronRight}
+                  size={20}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+            ))}
+
+            <View style={styles.duplicatesActions}>
+              <Pressable
+                onPress={handleIgnoreDuplicates}
+                accessibilityRole="button"
+                accessibilityLabel="Registrar mesmo assim, este é um problema diferente"
+                style={({ pressed }: { pressed: boolean }) => [
+                  styles.registerAnyway,
+                  pressed && styles.registerAnywayPressed,
+                ]}
+              >
+                <Text style={styles.registerAnywayText}>É um problema diferente</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {createError ? (
+          <View style={styles.submitError} accessibilityRole="alert">
+            <MaterialCommunityIcons name={ICONS.alert} size={18} color={colors.danger} />
+            <Text style={styles.submitErrorText}>{createError}</Text>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.base }]}>
         <Button
-          title={showDuplicates && !checkedDuplicates ? 'Registrar mesmo assim' : 'Registrar problema'}
-          onPress={showDuplicates && !checkedDuplicates ? handleIgnoreDuplicates : handleSubmit}
+          title={
+            createLoading
+              ? 'Registrando...'
+              : duplicateLoading
+                ? 'Verificando...'
+                : uploadingPhotos
+                  ? 'Enviando fotos...'
+                  : 'Registrar problema'
+          }
+          icon={busy ? 'clock-outline' : 'check'}
+          onPress={handleSubmit}
           variant="primary"
-          loading={createLoading || duplicateLoading}
-          disabled={createLoading || duplicateLoading}
           size="large"
           fullWidth
+          loading={busy}
+          accessibilityHint="Salva o seu relato no Mapa da Cidade"
         />
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 function formatDistance(meters: number): string {
-  if (meters < 1000) {
-    return `${Math.round(meters)} m`;
-  }
-  return `${(meters / 1000).toFixed(1)} km`;
+  if (!Number.isFinite(meters) || meters < 0) return 'distância desconhecida';
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  const km = meters / 1000;
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
-  loadingContainer: {
+  loading: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.background,
   },
+  loadingText: {
+    fontSize: fontSize.body,
+    color: colors.textMuted,
+  },
+
+  content: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.lg,
+  },
+  contentWide: {
+    maxWidth: 620,
+  },
+
   header: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.pill,
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  backButton: {
-    padding: 8,
+  iconButtonPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
-  backButtonText: {
-    fontSize: 16,
-    color: '#1976D2',
-    fontWeight: '600',
+  headerText: {
+    flex: 1,
+    gap: 2,
+  },
+  step: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+    letterSpacing: 1,
   },
   title: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    fontSize: fontSize.headline,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    lineHeight: fontSize.headline * lineHeight.tight,
   },
-  headerSpacer: {
-    width: 48,
+  subtitle: {
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    lineHeight: fontSize.small * lineHeight.snug,
+    marginTop: spacing.sm,
+    marginBottom: spacing.base,
   },
-  categoryBadge: {
+
+  summaryCard: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+  },
+  summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F5F5F5',
+    gap: spacing.sm,
   },
-  categoryBadgeIcon: {
-    fontSize: 20,
+  summaryPhotos: {
+    gap: spacing.sm,
   },
-  categoryBadgeText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1A1A1A',
+  summaryText: {
+    flex: 1,
+    fontSize: fontSize.small,
+    color: colors.textSecondary,
+    lineHeight: fontSize.small * lineHeight.snug,
   },
-  locationInfo: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F5F5F5',
-  },
-  locationLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#1A1A1A',
-  },
-  photoPreview: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  photoThumb: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: '#E0E0E0',
-  },
-  descriptionSection: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 100,
+
+  field: {
+    gap: spacing.sm,
   },
   label: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    marginBottom: 8,
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
-  textInput: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#1A1A1A',
-    minHeight: 140,
-    textAlignVertical: 'top',
+  required: {
+    color: colors.danger,
   },
-  inputFooter: {
+  input: {
+    minHeight: 160,
+    padding: spacing.base,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    fontSize: fontSize.body,
+    color: colors.text,
+    lineHeight: fontSize.body * lineHeight.normal,
+  },
+  inputError: {
+    borderColor: colors.danger,
+  },
+  footerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  helperText: {
+    flex: 1,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+  },
+  errorBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   errorText: {
-    fontSize: 13,
-    color: '#E53935',
+    flex: 1,
+    fontSize: fontSize.caption,
+    color: colors.danger,
+    fontWeight: fontWeight.medium,
   },
-  charCount: {
-    fontSize: 13,
-    color: '#999',
+  counter: {
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+    fontVariant: ['tabular-nums'],
   },
-  duplicateWarning: {
-    backgroundColor: '#FFF8E1',
+  counterFull: {
+    color: colors.danger,
+    fontWeight: fontWeight.semibold,
+  },
+
+  duplicates: {
+    marginTop: spacing.lg,
+    padding: spacing.base,
+    borderRadius: radii.lg,
+    backgroundColor: colors.warningSoft,
     borderWidth: 1,
-    borderColor: '#FFD54F',
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
+    borderColor: colors.warningBorder,
+    gap: spacing.sm,
   },
-  duplicateTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#F57F17',
-    marginBottom: 8,
+  duplicatesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  duplicateText: {
-    fontSize: 14,
-    color: '#F57F17',
-    marginBottom: 12,
+  duplicatesTitle: {
+    flex: 1,
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.bold,
+    color: colors.onWarningSoft,
+  },
+  duplicatesText: {
+    fontSize: fontSize.small,
+    color: colors.onWarningSoft,
+    lineHeight: fontSize.small * lineHeight.snug,
   },
   duplicateItem: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  duplicateItemPressed: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  duplicateInfo: {
+    flex: 1,
+    gap: 2,
   },
   duplicateItemTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    marginBottom: 4,
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
   duplicateItemMeta: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
   },
-  duplicateActions: {
+  duplicatesActions: {
+    marginTop: spacing.xs,
+  },
+  registerAnyway: {
+    minHeight: 48,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.warningBorder,
+  },
+  registerAnywayPressed: {
+    backgroundColor: colors.warningBorder,
+  },
+  registerAnywayText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+    color: colors.warning,
+  },
+
+  submitError: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.base,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
   },
-  duplicateButton: {
+  submitErrorText: {
     flex: 1,
+    fontSize: fontSize.small,
+    color: colors.onDangerSoft,
+    lineHeight: fontSize.small * lineHeight.snug,
   },
-  bottomButton: {
-    padding: 16,
-    backgroundColor: '#fff',
+
+  footer: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.base,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: colors.border,
   },
 });

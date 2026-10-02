@@ -26,10 +26,22 @@ export function useAnonymousId() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getAnonymousId().then((id) => {
-      setAnonymousId(id);
-      setLoading(false);
-    });
+    let active = true;
+
+    getAnonymousId()
+      .then((id) => {
+        if (active) setAnonymousId(id);
+      })
+      .catch(() => {
+        // nothing to report: anonymous actions simply become ownerless
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   return { anonymousId, loading };
@@ -46,6 +58,7 @@ export function useCategories() {
       const data = await getCategories();
       setCategories(data);
     } catch (err) {
+      console.warn('[useCategories] falha ao carregar', err);
       setError('Erro ao carregar categorias');
     } finally {
       setLoading(false);
@@ -114,7 +127,7 @@ export function useReport(reportId: string, anonymousId: string) {
       setLoading(true);
       const data = await getReportById(reportId, anonymousId);
       setReport(data);
-    } catch (err) {
+    } catch {
       setError('Erro ao carregar problema');
     } finally {
       setLoading(false);
@@ -122,10 +135,10 @@ export function useReport(reportId: string, anonymousId: string) {
   }, [reportId, anonymousId]);
 
   useEffect(() => {
-    if (reportId) {
+    if (reportId && anonymousId) {
       loadReport();
     }
-  }, [loadReport, reportId]);
+  }, [loadReport, reportId, anonymousId]);
 
   return { report, loading, error, refresh: loadReport };
 }
@@ -147,7 +160,7 @@ export function useCreateReport() {
       setError(null);
       const report = await createReport(categoryId, title, description, latitude, longitude, anonymousId);
       return report;
-    } catch (err) {
+    } catch {
       setError('Erro ao criar problema');
       return null;
     } finally {
@@ -160,7 +173,7 @@ export function useCreateReport() {
 
 export function useCheckDuplicates() {
   const [loading, setLoading] = useState(false);
-  const [duplicates, setDuplicates] = useState<Array<{ report: Report; distance: number }>>([]);
+  const [duplicates, setDuplicates] = useState<{ report: Report; distance: number }[]>([]);
 
   const check = async (
     categoryId: string,
@@ -173,7 +186,7 @@ export function useCheckDuplicates() {
       const data = await checkDuplicates(categoryId, latitude, longitude, radiusMeters);
       setDuplicates(data);
       return data;
-    } catch (err) {
+    } catch {
       setDuplicates([]);
       return [];
     } finally {
@@ -199,8 +212,10 @@ export function useSupportReport(reportId: string, anonymousId: string) {
   }, [reportId, anonymousId]);
 
   useEffect(() => {
-    loadSupportStatus();
-  }, [loadSupportStatus]);
+    if (reportId && anonymousId) {
+      loadSupportStatus();
+    }
+  }, [loadSupportStatus, reportId, anonymousId]);
 
   const toggleSupport = async (currentCount: number): Promise<boolean> => {
     try {
@@ -227,7 +242,7 @@ export function useSupportReport(reportId: string, anonymousId: string) {
 }
 
 export function useReportUpdates(reportId: string) {
-  const [updates, setUpdates] = useState<Array<ReportUpdate & { photos?: Photo[] }>>([]);
+  const [updates, setUpdates] = useState<(ReportUpdate & { photos?: Photo[] })[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadUpdates = useCallback(async () => {
@@ -268,7 +283,7 @@ export function useReportUpdates(reportId: string) {
 }
 
 export function useReportRelations(reportId: string) {
-  const [relations, setRelations] = useState<Array<ReportRelation & { related_report?: Report }>>([]);
+  const [relations, setRelations] = useState<(ReportRelation & { related_report?: Report })[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadRelations = useCallback(async () => {
@@ -326,10 +341,10 @@ export function useResolutionConfirmation(reportId: string, anonymousId: string)
   }, [reportId, anonymousId]);
 
   useEffect(() => {
-    if (reportId) {
+    if (reportId && anonymousId) {
       loadStatus();
     }
-  }, [loadStatus, reportId]);
+  }, [loadStatus, reportId, anonymousId]);
 
   const confirm = async (): Promise<boolean> => {
     try {

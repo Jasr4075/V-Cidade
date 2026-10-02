@@ -1,33 +1,24 @@
 import React from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { ViewStyle } from 'react-native';
+import { StateView } from './StateView';
 
 interface LoadingStateProps {
   message?: string;
-  size?: 'small' | 'large';
-  style?: object;
+  compact?: boolean;
+  style?: ViewStyle;
 }
 
-export const LoadingState = ({ message = 'Carregando...', size = 'large', style }: LoadingStateProps) => {
-  return (
-    <View style={[styles.container, style]}>
-      <ActivityIndicator size={size} color="#1976D2" />
-      {message && <Text style={styles.message}>{message}</Text>}
-    </View>
-  );
-};
+export const LoadingState = ({
+  message = 'Carregando...',
+  compact = false,
+  style,
+}: LoadingStateProps) => (
+  <StateView
+    variant="loading"
+    message={message}
+    compact={compact}
+    style={style}
+  />
+);
 
 LoadingState.displayName = 'LoadingState';
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  message: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-  },
-});

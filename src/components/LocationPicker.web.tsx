@@ -1,21 +1,30 @@
-import React, { useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Coordinates, getCurrentLocation, reverseGeocode } from '@/services/location/location';
-
+import { MaterialCommunityIcons, ICONS, colors, radii, spacing, fontSize, fontWeight, lineHeight, shadow, layout } from '@/theme';
 /**
- * Respaldo de selector de ubicación para la plataforma web.
+ * Respaldo de seleção de localização para web.
  *
- * `react-native-maps` es una librería nativa (Android/iOS) incompatible con
- * react-native-web (usa `codegenNativeComponent`, removido de RN-W 0.21.x).
- * Expo resuelve automáticamente `LocationPicker.native.tsx` en dispositivos y
- * este archivo (`.web.tsx`) en navegadores, sin llegar a importar `react-native-maps`.
+ * `react-native-maps` é nativo (Android/iOS) e incompatível com react-native-web
+ * (usa `codegenNativeComponent`, removido no RN-W 0.21.x). O Expo resolve
+ * `LocationPicker.native.tsx` nos dispositivos e este arquivo (`.web.tsx`) no
+ * navegador, sem nunca importar `react-native-maps`.
+ *
+ * Mesma API da versão nativa: cabeçalho e CTA ficam dentro do componente, então
+ * a tela não desenha cabeçalho nem botão duplicados.
  */
-
 interface LocationPickerProps {
   initialLocation?: Coordinates;
   onLocationSelect: (location: Coordinates, address: string) => void;
-  onCancel: () => void;
   title?: string;
+  subtitle?: string;
+  categoryLabel?: string;
+  stepLabel?: string;
+  onBack?: () => void;
+  ctaLabel?: string;
+  ctaDisabledLabel?: string;
+  onContinue?: () => void;
 }
 
 function parseCoordinate(value: string): number | null {
@@ -26,133 +35,241 @@ function parseCoordinate(value: string): number | null {
 export const LocationPicker = ({
   initialLocation,
   onLocationSelect,
-  onCancel,
-  title = 'Escolher localização',
+  title = 'Onde está o problema?',
+  subtitle = 'Informe as coordenadas, ou use a sua localização atual.',
+  categoryLabel,
+  stepLabel = 'ETAPA 2 DE 4',
+  onBack,
+  ctaLabel = 'Continuar',
+  ctaDisabledLabel = 'Informe as coordenadas',
+  onContinue,
 }: LocationPickerProps) => {
-  const [latStr, setLatStr] = React.useState(initialLocation ? String(initialLocation.latitude) : '');
-  const [lngStr, setLngStr] = React.useState(initialLocation ? String(initialLocation.longitude) : '');
-  const [address, setAddress] = React.useState('');
-  const [loading, setLoading] = React.useState(false);
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 700;
+
+  const [latStr, setLatStr] = useState(
+    initialLocation ? String(initialLocation.latitude) : ''
+  );
+  const [lngStr, setLngStr] = useState(
+    initialLocation ? String(initialLocation.longitude) : ''
+  );
+  const [address, setAddress] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const selectedLat = parseCoordinate(latStr);
   const selectedLng = parseCoordinate(lngStr);
-  const hasSelection = selectedLat !== null && selectedLng !== null;
 
-  useEffect(() => {
-    if (initialLocation) {
-      reverseGeocode(initialLocation.latitude, initialLocation.longitude).then(setAddress);
-    }
-  }, [initialLocation]);
+  // Validação de faixa: impede gravar coordenadas sem sentido (ex.: 999).
+  const latValid = selectedLat !== null && selectedLat >= -90 && selectedLat <= 90;
+  const lngValid = selectedLng !== null && selectedLng >= -180 && selectedLng <= 180;
+  const hasSelection = latValid && lngValid;
 
-  const handleAddressLookup = () => {
-    if (!hasSelection) return;
-    setLoading(true);
-    reverseGeocode(selectedLat!, selectedLng!).then((addr) => {
-      setAddress(addr);
-      setLoading(false);
-    });
-  };
-
-  const handleUseCurrentLocation = async () => {
+  const handleUseCurrentLocation = useCallback(async () => {
     setLoading(true);
     try {
       const location = await getCurrentLocation();
-      if (location) {
-        setLatStr(String(location.latitude).substring(0, 9));
-        setLngStr(String(location.longitude).substring(0, 9));
-        const addr = await reverseGeocode(location.latitude, location.longitude);
-        setAddress(addr);
-      }
+      if (!location) return;
+      setLatStr(location.latitude.toFixed(6));
+      setLngStr(location.longitude.toFixed(6));
+      setAddress(await reverseGeocode(location.latitude, location.longitude));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleConfirm = () => {
+  const handleLookup = useCallback(async () => {
+    if (!hasSelection) return;
+    setLoading(true);
+    try {
+      setAddress(await reverseGeocode(selectedLat!, selectedLng!));
+    } finally {
+      setLoading(false);
+    }
+  }, [hasSelection, selectedLat, selectedLng]);
+
+  const handleContinue = useCallback(() => {
     if (!hasSelection) return;
     onLocationSelect({ latitude: selectedLat!, longitude: selectedLng! }, address);
-  };
+    onContinue?.();
+  }, [hasSelection, selectedLat, selectedLng, address, onLocationSelect, onContinue]);
+
+  const addressText = loading
+    ? 'Buscando endereço...'
+    : address || 'O endereço aparece depois que você informar o local.';
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: insets.top + spacing.sm,
+          paddingBottom: insets.bottom + spacing.xxl,
+        },
+        isWide && styles.contentWide,
+      ]}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.header}>
-        <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
-          <Text style={styles.closeButtonText}>Cancelar</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{title}</Text>
-        <TouchableOpacity onPress={handleConfirm} style={styles.confirmButton} disabled={!hasSelection}>
-          <Text style={[styles.confirmButtonText, !hasSelection && styles.confirmButtonTextDisabled]}>
-            Confirmar
+        {onBack ? (
+          <Pressable
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Voltar"
+            style={({ pressed }: { pressed: boolean }) => [
+              styles.iconButton,
+              pressed && styles.iconButtonPressed,
+            ]}
+          >
+            <MaterialCommunityIcons name={ICONS.back} size={24} color={colors.text} />
+          </Pressable>
+        ) : (
+          <View style={styles.iconButton} />
+        )}
+
+        <View style={styles.headerText}>
+          <Text style={styles.step}>{stepLabel}</Text>
+          <Text style={styles.title} accessibilityRole="header">
+            {title}
           </Text>
-        </TouchableOpacity>
+          {categoryLabel ? (
+            <View style={styles.categoryBadge}>
+              <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.primary} />
+              <Text style={styles.categoryLabel}>{categoryLabel}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
-      <View style={styles.addressContainer}>
-        <Text style={styles.addressLabel}>Endereço:</Text>
-        {loading ? (
-          <Text style={styles.addressLoading}>Buscando endereço...</Text>
-        ) : (
-          <Text style={styles.addressText}>{address || 'Ingresa coordenadas para ver la dirección'}</Text>
-        )}
+      <View style={styles.notice}>
+        <MaterialCommunityIcons name={ICONS.info} size={20} color={colors.info} />
+        <Text style={styles.noticeText}>
+          No navegador o mapa interativo não está disponível. Informe as coordenadas do
+          problema — no celular você toca direto no mapa.
+        </Text>
       </View>
+
+      <Text style={styles.subtitle}>{subtitle}</Text>
 
       <View style={styles.form}>
-        <Text style={styles.formTitle}>Ingresa las coordenadas del problema</Text>
-
         <View style={styles.row}>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Latitud</Text>
+            <Text style={styles.fieldLabel} nativeID="lat-label">
+              Latitude
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                latStr.length > 0 && !latValid && styles.inputInvalid,
+              ]}
               value={latStr}
               onChangeText={setLatStr}
-              placeholder="-23.5505"
+              placeholder="-23,550500"
+              placeholderTextColor={colors.textDisabled}
               inputMode="decimal"
-              keyboardType="decimal-pad"
+              accessibilityLabel="Latitude"
+              accessibilityLabelledBy="lat-label"
             />
+            {latStr.length > 0 && !latValid ? (
+              <Text style={styles.fieldError}>Use um valor entre -90 e 90.</Text>
+            ) : null}
           </View>
+
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Longitud</Text>
+            <Text style={styles.fieldLabel} nativeID="lng-label">
+              Longitude
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                lngStr.length > 0 && !lngValid && styles.inputInvalid,
+              ]}
               value={lngStr}
               onChangeText={setLngStr}
-              placeholder="-46.6333"
+              placeholder="-46,633300"
+              placeholderTextColor={colors.textDisabled}
               inputMode="decimal"
-              keyboardType="decimal-pad"
+              accessibilityLabel="Longitude"
+              accessibilityLabelledBy="lng-label"
             />
+            {lngStr.length > 0 && !lngValid ? (
+              <Text style={styles.fieldError}>Use um valor entre -180 e 180.</Text>
+            ) : null}
           </View>
         </View>
 
-        {hasSelection && (
-          <TouchableOpacity
-            style={styles.addressButton}
-            onPress={handleAddressLookup}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.addressButtonText}>Buscar dirección</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.addressBar}>
+          <MaterialCommunityIcons
+            name={hasSelection ? 'check-circle' : ICONS.map}
+            size={20}
+            color={hasSelection ? colors.success : colors.textMuted}
+          />
+          {loading ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+          <Text style={[styles.addressText, hasSelection && styles.addressTextSet]}>
+            {addressText}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={handleLookup}
+          disabled={!hasSelection || loading}
+          accessibilityRole="button"
+          accessibilityLabel="Buscar endereço dessas coordenadas"
+          style={({ pressed }: { pressed: boolean }) => [
+            styles.lookupButton,
+            !hasSelection && styles.lookupDisabled,
+            pressed && hasSelection && styles.lookupPressed,
+          ]}
+        >
+          <Text style={[styles.lookupText, !hasSelection && styles.lookupTextDisabled]}>
+            Buscar endereço
+          </Text>
+        </Pressable>
       </View>
 
-      <View style={styles.mapPlaceholder}>
-        <Text style={styles.mapPlaceholderIcon}>🗺️</Text>
-        <Text style={styles.mapPlaceholderText}>
-          El mapa interactivo está disponible en la app para Android/iOS.{'\n'}
-          Aquí puedes ingresar las coordenadas manualmente.
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.currentLocationButton}
+      <Pressable
         onPress={handleUseCurrentLocation}
         disabled={loading}
+        accessibilityRole="button"
+        accessibilityLabel="Usar minha localização atual"
+        style={({ pressed }: { pressed: boolean }) => [
+          styles.currentLocation,
+          pressed && styles.currentLocationPressed,
+        ]}
       >
-        <Text style={styles.currentLocationButtonText}>
-          {loading ? 'Obtendo localização...' : 'Usar mi localización actual'}
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <MaterialCommunityIcons name={ICONS.myLocation} size={20} color={colors.primary} />
+        )}
+        <Text style={styles.currentLocationText}>
+          {loading ? 'Obtendo localização...' : 'Usar minha localização atual'}
         </Text>
-      </TouchableOpacity>
-    </View>
+      </Pressable>
+
+      <Pressable
+        onPress={handleContinue}
+        disabled={!hasSelection}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !hasSelection }}
+        accessibilityLabel={hasSelection ? ctaLabel : ctaDisabledLabel}
+        style={({ pressed }: { pressed: boolean }) => [
+          styles.cta,
+          !hasSelection && styles.ctaDisabled,
+          pressed && hasSelection && styles.ctaPressed,
+        ]}
+      >
+        <Text style={[styles.ctaText, !hasSelection && styles.ctaTextDisabled]}>
+          {hasSelection ? ctaLabel : ctaDisabledLabel}
+        </Text>
+        <MaterialCommunityIcons
+          name="arrow-right"
+          size={22}
+          color={hasSelection ? colors.onPrimary : colors.textDisabled}
+        />
+      </Pressable>
+    </ScrollView>
   );
 };
 
@@ -161,133 +278,222 @@ LocationPicker.displayName = 'LocationPicker';
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
+  content: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.base,
+    gap: spacing.base,
+  },
+  contentWide: {
+    maxWidth: 560,
+  },
+
   header: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.pill,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  closeButton: {
-    padding: 8,
+  iconButtonPressed: {
+    backgroundColor: colors.surfaceSunken,
   },
-  closeButtonText: {
-    fontSize: 16,
-    color: '#1976D2',
-    fontWeight: '600',
+  headerText: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  step: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+    letterSpacing: 1,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    fontSize: fontSize.headline,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
+    lineHeight: fontSize.headline * lineHeight.tight,
   },
-  confirmButton: {
-    padding: 8,
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
   },
-  confirmButtonText: {
-    fontSize: 16,
-    color: '#1976D2',
-    fontWeight: '600',
+  categoryLabel: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+    color: colors.primary,
   },
-  confirmButtonTextDisabled: {
-    color: '#999',
+
+  notice: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.infoSoft,
+    borderWidth: 1,
+    borderColor: colors.infoBorder,
   },
-  addressContainer: {
-    padding: 16,
-    backgroundColor: '#F5F5F5',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+  noticeText: {
+    flex: 1,
+    fontSize: fontSize.small,
+    color: colors.textSecondary,
+    lineHeight: fontSize.small * lineHeight.snug,
   },
-  addressLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 4,
+  subtitle: {
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    lineHeight: fontSize.small * lineHeight.snug,
   },
-  addressText: {
-    fontSize: 16,
-    color: '#1A1A1A',
-  },
-  addressLoading: {
-    fontSize: 16,
-    color: '#999',
-  },
+
   form: {
-    padding: 16,
-  },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    marginBottom: 12,
+    gap: spacing.md,
+    padding: spacing.base,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow.sm,
   },
   row: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.md,
   },
   field: {
     flex: 1,
+    gap: spacing.xs,
   },
   fieldLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 6,
+    fontSize: fontSize.small,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
   },
   input: {
-    height: 44,
+    minHeight: 52,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    fontSize: fontSize.body,
+    color: colors.text,
+    backgroundColor: colors.surface,
+  },
+  inputInvalid: {
+    borderColor: colors.danger,
+  },
+  fieldError: {
+    fontSize: fontSize.caption,
+    color: colors.danger,
+  },
+
+  addressBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: '#C0C0C0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 16,
-    color: '#1A1A1A',
-    backgroundColor: '#fff',
+    borderColor: colors.border,
   },
-  addressButton: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#E3F2FD',
-    alignItems: 'center',
-  },
-  addressButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1976D2',
-  },
-  mapPlaceholder: {
+  addressText: {
     flex: 1,
-    marginTop: 8,
-    padding: 20,
-    borderRadius: 12,
-    backgroundColor: '#EEF4FF',
+    fontSize: fontSize.small,
+    color: colors.textMuted,
+    lineHeight: fontSize.small * lineHeight.snug,
+  },
+  addressTextSet: {
+    color: colors.text,
+    fontWeight: fontWeight.medium,
+  },
+
+  lookupButton: {
+    minHeight: 48,
+    borderRadius: radii.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1.5,
+    borderColor: colors.primaryBorder,
   },
-  mapPlaceholderIcon: {
-    fontSize: 24,
-    marginBottom: 8,
+  lookupDisabled: {
+    backgroundColor: colors.surfaceSunken,
+    borderColor: colors.border,
   },
-  mapPlaceholderText: {
-    fontSize: 13,
-    color: '#1976D2',
-    lineHeight: 18,
-    textAlign: 'center',
+  lookupPressed: {
+    backgroundColor: colors.primaryBorder,
   },
-  currentLocationButton: {
-    padding: 16,
-    backgroundColor: '#E3F2FD',
+  lookupText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+    color: colors.primary,
+  },
+  lookupTextDisabled: {
+    color: colors.textDisabled,
+  },
+
+  currentLocation: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minHeight: 48,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.primaryBorder,
   },
-  currentLocationButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1976D2',
+  currentLocationPressed: {
+    backgroundColor: colors.primarySoft,
+  },
+  currentLocationText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+    color: colors.primary,
+  },
+
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minHeight: 56,
+    borderRadius: radii.md,
+    backgroundColor: colors.primary,
+  },
+  ctaPressed: {
+    backgroundColor: colors.primaryPressed,
+  },
+  ctaDisabled: {
+    backgroundColor: colors.surfaceSunken,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  ctaText: {
+    fontSize: fontSize.title,
+    fontWeight: fontWeight.bold,
+    color: colors.onPrimary,
+  },
+  ctaTextDisabled: {
+    color: colors.textDisabled,
   },
 });
